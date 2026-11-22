@@ -67,9 +67,11 @@ internal static class Ui
     }
 }
 
-internal sealed class FormWindow : Window
+internal class FormWindow : Window
 {
     public StackPanel Fields { get; } = new();
+    protected StackPanel Header { get; } = new();
+    protected ScrollViewer BodyScroll { get; }
     public Button Accept { get; }
     public Button CancelButton { get; }
     private readonly TextBlock error;
@@ -85,12 +87,17 @@ internal sealed class FormWindow : Window
         SizeToContent = SizeToContent.Height;
         Width = Math.Min(485, owner.ActualWidth - 12);
         MaxHeight = Math.Max(260, SystemParameters.WorkArea.Height - 30);
-        var layout = new DockPanel { Margin = new Thickness(23, 20, 23, 16) };
-        var heading = Ui.Text(title, "Heading");
-        DockPanel.SetDock(heading, Dock.Top);
-        layout.Children.Add(heading);
+        var layout = new Grid { Margin = new Thickness(23, 20, 23, 16) };
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.RowDefinitions.Add(new RowDefinition());
+        layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        Header.Children.Add(Ui.Text(title, "Heading"));
+        layout.Children.Add(Header);
+        BodyScroll = new ScrollViewer { Content = Fields, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+        Grid.SetRow(BodyScroll, 1);
+        layout.Children.Add(BodyScroll);
         var footer = new StackPanel();
-        DockPanel.SetDock(footer, Dock.Bottom);
+        Grid.SetRow(footer, 2);
         layout.Children.Add(footer);
         error = Ui.Text("", null, 8);
         error.SetResourceReference(TextBlock.ForegroundProperty, "ErrorInk");
@@ -103,7 +110,6 @@ internal sealed class FormWindow : Window
         actions.Children.Add(CancelButton);
         actions.Children.Add(Accept);
         footer.Children.Add(actions);
-        layout.Children.Add(new ScrollViewer { Content = Fields, VerticalScrollBarVisibility = ScrollBarVisibility.Auto });
         Content = layout;
     }
     public TextBox Field(string title, string value, int length = 80)

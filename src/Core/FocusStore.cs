@@ -25,11 +25,18 @@ public sealed class FocusStore(string folder)
                     || data.History.Any(e => e == null || e.End < e.Start)
                     || data.Active is { } active && active.End <= active.Start) continue;
                 recovered = candidate != path;
+                var apps = data.Apps.Select(Targets.App).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+                var selected = apps.ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var appInfo = new Dictionary<string, SavedAppInfo>(StringComparer.OrdinalIgnoreCase);
+                foreach (var (key, info) in data.AppInfo ?? [])
+                    if (Targets.App(key) is { } name && selected.Contains(name) && !string.IsNullOrWhiteSpace(info?.DisplayName)
+                        && !string.IsNullOrWhiteSpace(info.CategoryId))
+                        appInfo[name] = info;
                 return UsageClock.Reconcile(data with
                 {
                     Theme = data.Theme is "light" or "dark" ? data.Theme : "system",
                     Minutes = Math.Clamp(data.Minutes, 1, 720),
-                    Apps = data.Apps.Select(Targets.App).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
+                    Apps = apps, AppInfo = appInfo,
                     Sites = data.Sites.Select(Targets.Domain).OfType<string>().Distinct().ToArray()
                 });
             }

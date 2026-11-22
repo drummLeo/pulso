@@ -18,11 +18,13 @@ public sealed record Session(string Title, DateTimeOffset Start, DateTimeOffset 
 }
 public sealed record Entry(string Title, DateTimeOffset Start, DateTimeOffset End, bool Completed);
 public sealed record WindowOfFocus(Routine Routine, DateOnly Day, DateTimeOffset Start, DateTimeOffset End);
+public sealed record SavedAppInfo(string DisplayName, string CategoryId);
 public sealed record FocusData
 {
     public string Theme { get; init; } = "system";
     public int Minutes { get; init; } = 25;
     public string[] Apps { get; init; } = [];
+    public Dictionary<string, SavedAppInfo> AppInfo { get; init; } = new(StringComparer.OrdinalIgnoreCase);
     public string[] Sites { get; init; } = [];
     public Routine[] Routines { get; init; } = [];
     public Entry[] History { get; init; } = [];

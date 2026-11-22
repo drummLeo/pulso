@@ -8,6 +8,9 @@ internal static class Program
 
     private static int Execute(string[] args)
     {
+        if (args is ["catalogo"]) return InstalledAppsChecks.Run();
+        if (args is ["catalogo-contagem"]) return InstalledAppsChecks.CountInstalled();
+        if (args is ["catalogo-interface"]) return AppPickerChecks.Run();
         if (args is ["aviso-bandeja"]) return TrayNoticeChecks.Run();
         if (args is ["tema"]) return ThemeChecks.Run();
         if (args is ["tema", var imageFolder]) return ThemeChecks.Run(imageFolder);

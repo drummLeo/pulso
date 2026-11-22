@@ -41,6 +41,7 @@ public final class MainActivity extends Activity {
     private final Runnable observer = () -> render(false);
     private Model model;
     private Focus f;
+    private AppCatalog appCatalog;
     private LinearLayout root, body, nav;
     private ScrollView scroll;
     private TextView status, today;
@@ -376,10 +377,19 @@ public final class MainActivity extends Activity {
         remember(dialog,"duracao",null,edit);
     }
     private void rules() {
+        if (appCatalog == null) appCatalog = Apps.catalog(this);
+        List<AppCatalog.Group> groups = Apps.groups(this, appCatalog, f.apps, false);
+        int selected = 0;
+        for (AppCatalog.Group group : groups) selected += group.items.size();
         LinearLayout apps=card(body);
-        heading(apps,"Aplicativos",f.apps.isEmpty()?"Escolha os apps para pausar durante o foco ou limitar por tempo de uso.":count(f.apps.size(),"app selecionado","apps selecionados"));
-        for(String pkg:f.apps)ruleRow(apps,Apps.label(this,pkg),Limits.app(pkg),null);
+        heading(apps,"Aplicativos",selected==0?"Escolha os apps para pausar durante o foco ou limitar por tempo de uso.":count(selected,"app selecionado","apps selecionados"));
         put(apps,button(this,"Escolher aplicativos",accent,accent_surface,this::appPicker),10);
+        for (AppCatalog.Group group : groups) {
+            TextView category = text(this, group.label + " · " + count(group.items.size(), "app", "apps"), 16, accent, true);
+            category.setAccessibilityHeading(true);
+            put(apps, category, 15);
+            for (AppCatalog.Item app : group.items) ruleRow(apps, app.name, Limits.app(app.pkg), null);
+        }
         LinearLayout sites=card(body);
         heading(sites,"Sites","No Chrome, Edge e Samsung Internet, o Pulso cobre a página quando a barra de endereço mostra um domínio da lista. Inclui subdomínios.");
         for(String site:f.sites)ruleRow(sites,site,Limits.site(site),()->model.edit(()->f.sites.remove(site)));
@@ -458,35 +468,59 @@ public final class MainActivity extends Activity {
         remember(dialog,"site",null,e);
     }
     private void appPicker() {
-        List<Apps.Item> all=Apps.launchable(this); Set<String> included=new LinkedHashSet<>();
-        for(Apps.Item i:all) included.add(i.pkg);
-        for(String pkg:f.apps)if(!included.contains(pkg))all.add(new Apps.Item(pkg,Apps.label(this,pkg)));
-        List<String> draft=restoring.getStringArrayList("selecionados");
-        Set<String> selected=new LinkedHashSet<>(draft==null?f.apps:draft);
-        List<Apps.Item> visible=new ArrayList<>(); LinearLayout box=fields();
-        EditText search=field("","Buscar aplicativo",false);fieldLabel(box,"Buscar aplicativo",search);
-        ListView list=new ListView(this); list.setChoiceMode(ListView.CHOICE_MODE_MULTIPLE);
-        int maxHeight=(int)(getResources().getDisplayMetrics().heightPixels*.41f);
-        box.addView(list,new LinearLayout.LayoutParams(FULL,Math.min(dp(this,340),maxHeight)));
-        TextView empty=text(this,"Nenhum aplicativo encontrado.",14,text_muted,false);put(box,empty,4);
-        Runnable filter=()->{
-            String term=search.getText().toString().trim().toLowerCase(PT); visible.clear();
-            List<String> labels=new ArrayList<>();
-            for(Apps.Item i:all)if(i.name.toLowerCase(PT).contains(term)||i.pkg.toLowerCase(PT).contains(term)){visible.add(i);labels.add(i.name);}
-            list.clearChoices();list.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_list_item_multiple_choice,labels));
-            for(int j=0;j<visible.size();j++)list.setItemChecked(j,selected.contains(visible.get(j).pkg));
-            empty.setVisibility(visible.isEmpty()?View.VISIBLE:View.GONE);
-        };
-        filter.run();list.setOnItemClickListener((p,v,pos,id)->{String pkg=visible.get(pos).pkg;if(list.isItemChecked(pos))selected.add(pkg);else selected.remove(pkg);});
+        List<String> original = restoring.getStringArrayList("originais");
+        List<String> draft = restoring.getStringArrayList("selecionados");
+        AppCatalog.Selection selection = new AppCatalog.Selection(original == null ? f.apps : original,
+            draft == null ? f.apps : draft);
+        Set<String> retained = new LinkedHashSet<>(f.apps);
+        retained.addAll(selection.original);
+        retained.addAll(selection.checked);
+        List<AppCatalog.Group> groups = Apps.groups(this, appCatalog, retained, true);
+
+        LinearLayout box = fields();
+        EditText search = field("", "Buscar aplicativo", false);
+        TextView label = text(this, "Nome, pacote ou categoria", 14, text_primary, true);
+        label.setLabelFor(search.getId());
+        put(box, label, 6);
+        LinearLayout searchBar = row(this);
+        weighted(searchBar, search, 0);
+        Button clear = button(this, "Limpar busca", accent, accent_surface, () -> search.setText(""));
+        clear.setVisibility(View.INVISIBLE);
+        searchBar.addView(clear);
+        put(box, searchBar, 2);
+        TextView total = text(this, "", 14, text_muted, false);
+        total.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        put(box, total, 5);
+        ListView list = new ListView(this);
+        list.setItemsCanFocus(true);
+        TextView empty = text(this, "Nenhum aplicativo encontrado.", 14, text_muted, false);
+        empty.setGravity(Gravity.CENTER);
+        FrameLayout results = new FrameLayout(this);
+        results.addView(list);
+        results.addView(empty);
+        list.setEmptyView(empty);
+        int maxHeight = (int)(getResources().getDisplayMetrics().heightPixels * .42f);
+        LinearLayout.LayoutParams space = new LinearLayout.LayoutParams(FULL, Math.min(dp(this, 360), maxHeight), 1);
+        space.topMargin = dp(this, 6);
+        box.addView(results, space);
+        AppPickerAdapter adapter = new AppPickerAdapter(this, groups, selection, total);
+        list.setAdapter(adapter);
         search.addTextChangedListener(new TextWatcher(){
             public void beforeTextChanged(CharSequence s,int start,int count,int after){}
-            public void onTextChanged(CharSequence s,int start,int before,int count){filter.run();}
+            public void onTextChanged(CharSequence s,int start,int before,int count){
+                clear.setVisibility(s.length() == 0 ? View.INVISIBLE : View.VISIBLE);
+                adapter.filter(s.toString());
+                list.setSelection(0);
+            }
             public void afterTextChanged(Editable s){}
         });
         AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Escolher aplicativos").setView(box).setNegativeButton("Cancelar",null)
-            .setPositiveButton("Salvar lista",(d,w)->model.edit(()->{f.apps.clear();f.apps.addAll(selected);})).show();
+            .setPositiveButton("Salvar lista",(d,w)->{
+                if (!selection.original.equals(selection.checked)) model.edit(() -> selection.applyTo(f.apps));
+            }).show();
         remember(dialog,"apps",state->{
-            state.putStringArrayList("selecionados",new ArrayList<>(selected));
+            state.putStringArrayList("originais",new ArrayList<>(selection.original));
+            state.putStringArrayList("selecionados",new ArrayList<>(selection.checked));
             state.putInt("item",list.getFirstVisiblePosition());
             if(list.getChildCount()>0)state.putInt("deslocamento",list.getChildAt(0).getTop());
         },search);

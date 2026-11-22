@@ -2,18 +2,21 @@ package br.local.pulso;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.net.Uri;
 import android.provider.Settings;
 import android.telecom.TelecomManager;
-import java.text.Collator;
-import java.util.ArrayList;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Reader;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
@@ -38,23 +41,42 @@ final class Apps {
         if (telecom != null) result.add(telecom.getDefaultDialerPackage());
         return result;
     }
-    static final class Item {
-        final String pkg, name;
-        Item(String pkg, String name) { this.pkg = pkg; this.name = name; }
+    static AppCatalog catalog(Context context) {
+        try (Reader table = new InputStreamReader(context.getResources().openRawResource(R.raw.app_categories),
+                StandardCharsets.UTF_8)) {
+            return new AppCatalog(table);
+        } catch (IOException invalid) {
+            throw new IllegalStateException("Falha ao ler as categorias de aplicativos", invalid);
+        }
     }
-    static List<Item> launchable(Context context) {
+
+    static List<AppCatalog.Group> groups(Context context, AppCatalog catalog, Collection<String> saved, boolean includeLauncherApps) {
+        if (!includeLauncherApps && saved.isEmpty()) return java.util.Collections.emptyList();
         PackageManager pm = context.getPackageManager();
         Set<String> essential = essential(context);
-        Map<String,Item> unique = new LinkedHashMap<>();
-        Intent launcher = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
-        for (ResolveInfo r : pm.queryIntentActivities(launcher, 0)) {
-            String pkg = r.activityInfo.packageName;
-            if (!essential.contains(pkg)) unique.put(pkg, new Item(pkg, r.loadLabel(pm).toString()));
+        Map<String, AppCatalog.Item> unique = new LinkedHashMap<>();
+        if (includeLauncherApps) {
+            Intent launcher = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
+            for (ResolveInfo resolved : pm.queryIntentActivities(launcher, 0)) {
+                ApplicationInfo app = resolved.activityInfo.applicationInfo;
+                if (!essential.contains(app.packageName) && !unique.containsKey(app.packageName))
+                    unique.put(app.packageName, item(catalog, pm, app));
+            }
         }
-        List<Item> items = new ArrayList<>(unique.values());
-        Collator collator = Collator.getInstance(new Locale("pt","BR"));
-        items.sort((a,b) -> collator.compare(a.name,b.name));
-        return items;
+        for (String pkg : saved) {
+            if (essential.contains(pkg) || unique.containsKey(pkg)) continue;
+            try {
+                unique.put(pkg, item(catalog, pm, pm.getApplicationInfo(pkg, 0)));
+            } catch (PackageManager.NameNotFoundException missing) {
+                unique.put(pkg, catalog.item(pkg, pkg, ApplicationInfo.CATEGORY_UNDEFINED, false));
+            }
+        }
+        return catalog.groups(unique.values());
+    }
+    @SuppressWarnings("deprecation")
+    private static AppCatalog.Item item(AppCatalog catalog, PackageManager pm, ApplicationInfo app) {
+        return catalog.item(app.packageName, pm.getApplicationLabel(app).toString(), app.category,
+            (app.flags & ApplicationInfo.FLAG_IS_GAME) != 0);
     }
     static String label(Context context, String pkg) {
         try {

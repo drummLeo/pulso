@@ -18,6 +18,7 @@ public partial class MainWindow : Window
     private readonly FocusStore store;
     private readonly BrowserLink bridge;
     private readonly Func<IReadOnlySet<string>, string?> minimizeBlockedApps;
+    private readonly Func<CancellationToken, AppScan> scanInstalledApps;
     private FocusData data;
     private HashSet<string> blocked = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, DateTimeOffset> pausedSites = new();
@@ -41,10 +42,15 @@ public partial class MainWindow : Window
     private static TimeZoneInfo Zone => TimeZoneInfo.Local;
 
     public MainWindow(FocusStore store, BrowserLink bridge, Func<IReadOnlySet<string>, string?>? minimizeBlockedApps = null)
+        : this(store, bridge, minimizeBlockedApps, InstalledApps.Scan) { }
+
+    internal MainWindow(FocusStore store, BrowserLink bridge, Func<IReadOnlySet<string>, string?>? minimizeBlockedApps,
+        Func<CancellationToken, AppScan> scanInstalledApps)
     {
         this.store = store;
         this.bridge = bridge;
         this.minimizeBlockedApps = minimizeBlockedApps ?? WindowBlocker.Apply;
+        this.scanInstalledApps = scanInstalledApps;
         data = store.Load();
         ((DesktopApp)Application.Current).SetTheme(data.Theme);
         InitializeComponent();
@@ -144,6 +150,7 @@ public partial class MainWindow : Window
         scheduleLabels.Clear();
         siteState = browserState = historyToday = null;
         siteInput = null;
+        installedAppsButton = null;
         switch (page)
         {
             case RulesId: RulesPage(); break;

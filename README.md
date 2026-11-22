@@ -13,7 +13,7 @@ Os pacotes de cada lançamento também ficam na [página de versões](https://gi
 
 ### No Windows
 
-1. Abra o executável. Em **Lista de bloqueio**, escolha uma janela ou um arquivo `.exe` e adicione os domínios que deseja pausar.
+1. Abra o executável. Em **Lista de bloqueio → Buscar aplicativos instalados**, o Pulso procura os programas deste PC, inclusive os que estão fechados. Marque os apps desejados e clique em **Salvar lista**. Para um programa portátil, você também pode escolher a janela aberta ou o arquivo `.exe`. Adicione os domínios na mesma tela.
 2. Para bloquear sites, abra **Navegadores** e clique em **Copiar caminho da extensão**. No gerenciador de extensões do Chrome ou do Edge, ative o **Modo do desenvolvedor**, escolha **Carregar sem compactação** ou **Carregar sem pacote** e selecione a pasta indicada. Repita nos perfis em que deseja usar o bloqueio.
 3. Em **Visão geral**, escolha a duração e clique em **Iniciar sessão**. Se você abrir um app bloqueado, o Pulso minimiza a janela e mostra um aviso com o motivo e o horário de liberação. Clique em **Entendi** para dispensar o aviso. Nos sites da lista, a extensão mostra uma página de pausa.
 
@@ -22,8 +22,14 @@ Fechar a janela mantém o Pulso na área de notificação, onde ele continua apl
 ### No Android
 
 1. Instale o APK. Abra o Pulso e toque em **Configurar acessibilidade → Abrir Acessibilidade**. Na One UI, procure **Aplicativos instalados → Pulso • Bloqueio de foco** e ative o serviço.
-2. Na aba **Lista**, escolha os aplicativos e adicione os domínios. Em **Foco**, selecione a duração e toque em **Iniciar sessão**.
+2. Na aba **Lista**, toque em **Escolher aplicativos**, marque os apps e toque em **Salvar lista**. Adicione os domínios na mesma aba. Em **Foco**, selecione a duração e toque em **Iniciar sessão**.
 3. Ao abrir um app bloqueado, você verá o aviso **Aplicativo em pausa**, com o motivo e o horário de liberação. Toque em **Entendi** para dispensá-lo. No Chrome, Edge e Samsung Internet, o Pulso cobre a página quando identifica um domínio bloqueado na barra de endereço visível.
+
+### Escolher aplicativos por categoria
+
+Nos dois aparelhos, o seletor e a lista de apps escolhidos mostram grupos como **Jogos**, **Redes sociais**, **Navegadores** e **Trabalho e estudo**. Você pode buscar pelo nome do app ou da categoria. Os apps que o Pulso não reconhecer ficam em **Outros**.
+
+Para adicionar todos os jogos encontrados, use **Selecionar todos** no grupo **Jogos** do Windows ou **Marcar** no mesmo grupo do Android. Você pode desmarcar itens individuais antes de salvar. Durante uma busca, a ação do grupo vale só para os resultados visíveis. Apps instalados depois podem ser escolhidos na próxima busca.
 
 ## Limites, agenda e aparência
 
@@ -49,6 +55,14 @@ dotnet run --project .\tests\EngineChecks.csproj
 
 Os verificadores do Windows registram as falhas no terminal. Para testar a apresentação do aviso com o Pulso na bandeja usando uma lista fictícia, execute `dotnet run --project .\tests\Windows\WindowsChecks.csproj -- aviso-bandeja`.
 
+Para verificar a descoberta de aplicativos e exercitar o seletor com dados fictícios em uma área de trabalho privada do Windows, execute os três comandos abaixo. O último requer Python 3.
+
+```powershell
+dotnet build .\tests\Windows\WindowsChecks.csproj -c Release
+dotnet run --no-build -c Release --project .\tests\Windows\WindowsChecks.csproj -- catalogo
+python .\tests\Windows\test_catalogo_interface.py
+```
+
 **Android.** Use Python 3, um JDK completo e o Android SDK com uma plataforma e as Build Tools instaladas. O script aceita o JDK do Android Studio ou `JAVA_HOME` e gera `Android\Pulso-Galaxy.apk`. A chave de assinatura fica em `%LOCALAPPDATA%\PulsoAndroid\Assinatura`. Atualizar uma instalação preservando os dados exige a mesma assinatura.
 
 ```powershell
@@ -56,11 +70,13 @@ python .\Android\compilar.py
 python .\Android\tests\test_tema.py
 ```
 
+Para testar a seleção por categoria no Android, instale o APK em um emulador descartável chamado `PulsoTeste17` e execute `python .\Android\tests\test_categorias_android.py --serial emulator-5584`, substituindo o serial pelo do seu emulador. O teste usa uma lista fictícia e apaga os dados do Pulso nesse emulador.
+
 ## Versões e alterações recentes
 
 <!-- pulso:resumo:inicio -->
 
-**Windows** 1.3.0 · **Android** 1.3 · **Extensão para Chrome e Edge** 1.2.0
+**Windows** 1.4.0 · **Android** 1.4 · **Extensão para Chrome e Edge** 1.2.0
 
 - 22/11/2026 — Adiciona saldo por agendamento e aviso de aplicativo em pausa no Pulso 1.3 · [a4b227b](https://github.com/drummLeo/pulso/commit/a4b227bd21d1ace0ab6e671c8b4aec5094cfb729)
 - 22/11/2026 — Adiciona o modo escuro ao Pulso 1.2 e documenta o projeto · [95c485b](https://github.com/drummLeo/pulso/commit/95c485b3a8cad1c6982b9c86cbb64c5b6e4f0129)

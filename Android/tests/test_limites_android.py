@@ -121,8 +121,9 @@ def select_targets(p, upgraded):
     p.tap("Lista")
     p.tap("Escolher aplicativos", scroll=True)
     if upgraded:
+        p.type_in("Buscar aplicativo", CHROME)
         p.tap("Chrome")
-    p.type_in("Buscar aplicativo", CLOCK)
+    p.type_in("Buscar aplicativo", CLOCK, replace=upgraded)
     choices = [n for n in p.nodes() if n.get("class") == "android.widget.CheckedTextView"]
     assert len(choices) == 1, "A busca precisa encontrar o relógio deste AVD."
     label = choices[0].get("text")

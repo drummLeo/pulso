@@ -1,6 +1,11 @@
-Pulso 1.3 para Android
+Pulso 1.4 para Android
 
 Abra o Pulso. Em Lista, escolha os aplicativos e adicione os domínios que deseja pausar. Em Foco, selecione uma duração e toque em Iniciar sessão.
+
+Escolher aplicativos por categoria
+Em Lista, toque em Escolher aplicativos para ver os apps disponíveis no aparelho. Pesquise pelo nome, pelo pacote ou pela categoria, como Jogos ou Navegadores. Os apps sem categoria reconhecida ficam em Outros.
+
+Marque um app individualmente ou use Marcar no cabeçalho de uma categoria. Durante uma busca, Marcar e Desmarcar afetam só os resultados visíveis daquele grupo. Toque em Salvar lista para aplicar as mudanças. Os apps escolhidos passam a aparecer por categoria também na aba Lista, com seus limites individuais.
 
 Aparência
 Toque em Tema no alto de qualquer aba e escolha Sistema, Claro ou Escuro. Sistema acompanha o modo claro ou escuro da One UI. A escolha fica salva no celular e vale também para os diálogos e a tela de site em pausa.

@@ -13,6 +13,7 @@ public partial class MainWindow
 {
     private TextBlock? siteState, browserState, historyToday;
     private TextBox? siteInput;
+    private Button? installedAppsButton;
     private readonly List<(string? Key, TextBlock Label, Button Edit)> usageLabels = [];
     private readonly List<(Routine Routine, TextBlock Label)> scheduleLabels = [];
     private int historyLimit = 40;
@@ -73,27 +74,39 @@ public partial class MainWindow
         siteState = Ui.Text("", "Hint", 8);
         Ui.Row(sites, siteState, Ui.Button("Navegadores", () => Navigate(BrowserId), "Quiet"));
         var apps = Ui.Section(ContentPage, "Aplicativos", "O Pulso minimiza as janelas durante o foco ou quando um limite de uso é atingido.");
-        Ui.Buttons(apps, Ui.Button("Escolher janela aberta", PickOpenApp), Ui.Button("Escolher arquivo .exe", PickFile, "Quiet"));
+        installedAppsButton = Ui.Button("Buscar aplicativos instalados", PickInstalledApps, "Primary");
+        Ui.Buttons(apps, installedAppsButton, Ui.Button("Escolher janela aberta", PickOpenApp), Ui.Button("Escolher arquivo .exe", PickFile, "Quiet"));
         if (data.Apps.Length == 0) apps.Children.Add(Ui.Text("Nenhum aplicativo na lista.", "Hint", 8));
-        foreach (var name in data.Apps)
-            AddUsageRow(apps, UsageClock.AppKey(name), name, Ui.Button("Remover", () =>
-                Change(data with { Apps = data.Apps.Where(a => a != name).ToArray() }, "Aplicativo removido da lista."), "Quiet", "Remover " + name));
+        foreach (var group in SelectedApps.Groups(SelectedApps.Read(data)))
+        {
+            apps.Children.Add(SelectedApps.Heading(group.Key));
+            foreach (var app in group)
+            {
+                var name = app.ProcessName;
+                var remove = Ui.Button("Remover", () => ChangeApps(SelectedApps.Read(data).Where(a =>
+                    !string.Equals(a.ProcessName, name, StringComparison.OrdinalIgnoreCase)), "Aplicativo removido da lista."), "Quiet", "Remover " + name);
+                AddUsageRow(apps, UsageClock.AppKey(name), name, remove, app.DisplayName);
+            }
+        }
     }
 
-    private void AddUsageRow(Panel section, string? key, string? name, Button? remove)
+    private void AddUsageRow(Panel section, string? key, string? name, Button? remove, string? friendlyName = null)
     {
         var limit = UsageClock.Get(data, key);
         var info = new StackPanel();
         if (name != null)
         {
-            var title = Ui.Text(key == UsageClock.AppKey(name) ? name + ".exe" : name);
+            var target = key == UsageClock.AppKey(name) ? name + ".exe" : name;
+            if (string.Equals(friendlyName, target, StringComparison.OrdinalIgnoreCase)) friendlyName = null;
+            var title = Ui.Text(friendlyName ?? target);
             title.FontWeight = FontWeights.SemiBold;
             info.Children.Add(title);
+            if (friendlyName != null) info.Children.Add(Ui.Text(target, "Hint", 1));
         }
         var label = Ui.Text("", "Hint", name == null ? 0 : 2);
         info.Children.Add(label);
         string description = name == null ? "limite compartilhado" : "limite de " + name;
-        var edit = Ui.Button(limit.Enabled ? "Editar limite" : "Configurar limite", () => EditUsageLimit(key, name), null,
+        var edit = Ui.Button(limit.Enabled ? "Editar limite" : "Configurar limite", () => EditUsageLimit(key, friendlyName ?? name), null,
             (limit.Enabled ? "Editar " : "Configurar ") + description);
         var buttons = new List<Button> { edit };
         usageLabels.Add((key, label, edit));
@@ -204,17 +217,35 @@ public partial class MainWindow
         }
         if (Change(data with { Sites = data.Sites.Append(d).Order(StringComparer.OrdinalIgnoreCase).ToArray() }, d + " adicionado à lista.")) siteInput?.Focus();
     }
-    private bool AddApp(string raw)
+    private bool ChangeApps(IEnumerable<DiscoveredApp> selected, string message)
+    {
+        var next = SelectedApps.Apply(data, selected);
+        if (!ReferenceEquals(next, data) && ReferenceEquals(next.Apps, data.Apps))
+        {
+            // Updating a display name or category leaves the current usage sample running.
+            if (!WriteState(next)) return false;
+            data = next;
+        }
+        return Change(next, message);
+    }
+    private void PickInstalledApps()
+    {
+        var dialog = new AppPickerWindow(this, SelectedApps.Read(data), scanInstalledApps,
+            selected => ChangeApps(selected, "Lista de aplicativos salva."));
+        dialog.ShowDialog();
+        installedAppsButton?.Focus();
+    }
+    private bool AddApp(string raw, string? path = null)
     {
         var name = Targets.App(raw);
         if (name == null) { Notify("Escolha um aplicativo de uso pessoal. Este componente é usado pelo Windows ou pelo Pulso.", true); return false; }
         if (data.Apps.Contains(name, StringComparer.OrdinalIgnoreCase)) { Notify("Este aplicativo já está na lista.", true); return false; }
-        return Change(data with { Apps = data.Apps.Append(name).Order(StringComparer.CurrentCultureIgnoreCase).ToArray() }, name + " adicionado à lista.");
+        return ChangeApps(SelectedApps.Read(data).Append(SelectedApps.Manual(name, path)), name + " adicionado à lista.");
     }
     private void PickFile()
     {
         var dialog = new OpenFileDialog { Title = "Escolher aplicativo", Filter = "Aplicativo do Windows (*.exe)|*.exe", CheckFileExists = true, Multiselect = false };
-        if (dialog.ShowDialog(this) == true) AddApp(Path.GetFileNameWithoutExtension(dialog.FileName));
+        if (dialog.ShowDialog(this) == true) AddApp(Path.GetFileNameWithoutExtension(dialog.FileName), dialog.FileName);
     }
     private void PickOpenApp()
     {

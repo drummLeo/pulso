@@ -132,6 +132,12 @@ def until(fn, label, timeout=10):
     raise AssertionError(label)
 
 
+def toggle_chrome(phone):
+    if not any(phone.matches(node, "Chrome") for node in phone.nodes()):
+        phone.type_in("Buscar aplicativo", CHROME)
+    phone.tap("Chrome")
+
+
 def test_editor(p, artifacts):
     assert p.sh("pm","clear",PKG) == "Success"
     p.sh("input","keyevent","KEYCODE_WAKEUP")
@@ -140,7 +146,7 @@ def test_editor(p, artifacts):
     p.screenshot(artifacts/"inicio.png")
     print("OK  APK assinado abre no Android 17",flush=True)
     p.tap("Lista");p.tap("Escolher aplicativos")
-    p.tap("Chrome");p.tap("Salvar lista")
+    toggle_chrome(p);p.tap("Salvar lista")
     p.tap("Adicionar site");p.type_in("exemplo.com","invalido");p.tap("Adicionar")
     p.check_visible("Adicionar site")
     p.type_in("invalido","127.0.0.1",replace=True);p.tap("Adicionar")
@@ -170,7 +176,7 @@ def test_blocking(p, artifacts,web_only=False):
             until(lambda: any(x in p.activity() for x in ("launcher","nexuslauncher","quickstep")), "Abrir um app bloqueado retorna ao launcher")
             p.home();p.tap("Foco");p.tap("Encerrar sessão");p.tap("Encerrar sessão")
             p.tap("Histórico");p.check_visible("Foco rápido");p.check_visible("Encerrada antes do fim")
-            p.tap("Lista");p.tap("Escolher aplicativos");p.tap("Chrome");p.tap("Salvar lista")
+            p.tap("Lista");p.tap("Escolher aplicativos");toggle_chrome(p);p.tap("Salvar lista")
             print("OK  Encerramento manual, liberação do app e histórico",flush=True)
         flags=artifacts/"chrome-command-line"
         flags.write_text("chrome --disable-fre --no-first-run --disable-background-networking --metrics-recording-only\n",encoding="ascii")
