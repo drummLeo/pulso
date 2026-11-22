@@ -11,6 +11,7 @@ internal static class Program
         if (args is ["catalogo"]) return InstalledAppsChecks.Run();
         if (args is ["catalogo-contagem"]) return InstalledAppsChecks.CountInstalled();
         if (args is ["catalogo-interface"]) return AppPickerChecks.Run();
+        if (args is ["filtros-navegador"]) return BrowserFilterChecks.Run().GetAwaiter().GetResult();
         if (args is ["aviso-bandeja"]) return TrayNoticeChecks.Run();
         if (args is ["tema"]) return ThemeChecks.Run();
         if (args is ["tema", var imageFolder]) return ThemeChecks.Run(imageFolder);
@@ -56,7 +57,15 @@ internal static class Program
                     data = data with { Theme = command[5..] };
                     bridge.Update(data); Console.WriteLine("ok"); break;
                 case "estado": Console.WriteLine(bridge.Connected); break;
+                case "recarregar-filtros": Console.WriteLine(bridge.RequiresFilterReload ? "sim" : "nao"); break;
+                case var filter when filter.StartsWith("filtro ", StringComparison.Ordinal):
+                    if (filter.Split(' ') is not ["filtro", var category, var setting]
+                        || category is not ("porn" or "gambling") || setting is not ("off" or "focus" or "always")) return 3;
+                    var mode = setting switch { "always" => SiteFilterMode.Always, "focus" => SiteFilterMode.Focus, _ => SiteFilterMode.Off };
+                    data = category == "porn" ? data with { PornFilter = mode } : data with { GamblingFilter = mode };
+                    bridge.Update(data); Console.WriteLine("ok"); break;
                 case "aba": Console.WriteLine(bridge.ForegroundSite("chrome") ?? bridge.ForegroundSite("msedge") ?? "-"); break;
+                case "aviso-categoria": Console.WriteLine(bridge.UsageTarget("chrome").App == null || bridge.UsageTarget("msedge").App == null ? "sim" : "nao"); break;
                 case "medir":
                     bridge.UpdateUsage(["pulso.test", "sub.pulso.test", "liberado.test"], new Dictionary<string, DateTimeOffset>());
                     Console.WriteLine("ok"); break;

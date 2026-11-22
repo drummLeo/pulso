@@ -96,7 +96,8 @@ def build(android_jar):
         shutil.copytree(ROOT / "res", work / "res")
         raw = work / "res" / "raw"
         raw.mkdir(exist_ok=True)
-        shutil.copyfile(ROOT.parent / "shared" / "app_categories.tsv", raw / "app_categories.tsv")
+        for name in ("app_categories.tsv", "site_porn.txt", "site_gambling.txt"):
+            shutil.copyfile(ROOT.parent / "shared" / name, raw / name)
         shutil.copytree(ROOT / "src", work / "src")
         shutil.copyfile(ROOT / "AndroidManifest.xml", work / "AndroidManifest.xml")
         aapt = tools / "aapt2.exe"

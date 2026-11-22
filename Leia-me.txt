@@ -24,6 +24,10 @@ Pesquise pelo nome do programa, pelo executável ou pela categoria. Marque um ap
 Se você estiver usando ou tentar abrir um programa em pausa, o Pulso minimiza a janela e exibe um aviso com o nome do aplicativo, a causa do bloqueio e o horário de liberação, inclusive com o Pulso na bandeja. Clique em Entendi para fechar o aviso. O programa continua em execução e o trabalho aberto fica disponível ao final da pausa.
 
 Sites no Chrome e no Edge
+Em Lista de bloqueio, procure Sites e escolha um modo para Pornografia e outro para Apostas. Desativado mantém a categoria desligada. Durante o foco vale durante sessões rápidas e agendamentos, inclusive os com saldo por hora. Sempre mantém a categoria bloqueada também fora desses horários enquanto o Pulso estiver aberto e a extensão estiver conectada. As escolhas começam desativadas.
+
+O Pulso verifica o domínio e seus subdomínios com listas locais incluídas na versão. O filtro de apostas também cobre os sites .bet.br. Os domínios cadastrados manualmente e seus limites continuam disponíveis.
+
 Abra Navegadores e clique em Copiar caminho da extensão. Abra o gerenciador do Chrome ou do Edge pelos botões da tela. Ative o Modo do desenvolvedor, escolha Carregar sem compactação ou Carregar sem pacote e cole o caminho da pasta. Volte ao Pulso para conferir a conexão. Repita nos perfis que deseja usar. Janelas anônimas ou InPrivate exigem habilitar a extensão também nesse modo.
 
 Se já usava a extensão, abra o Pulso atualizado e clique em Recarregar no cartão do Pulso em chrome://extensions ou edge://extensions para habilitar a medição. Um domínio na lista inclui seus subdomínios. Durante a sessão ou ao atingir um limite, as abas desses sites mostram uma página de pausa. Ao final, use Voltar ou abra o endereço novamente.

@@ -17,12 +17,17 @@ async function loadPrevious() {
 }
 async function refresh() {
   const state = await chrome.runtime.sendMessage({ type: "pagina", previousUrl, host: location.hash.slice(1) });
-  active = state.connected && state.until > Date.now();
+  active = state.connected && (state.until === -1 || state.until > Date.now());
   title.textContent = active ? (state.limit ? "Limite de uso atingido." : "Este site está em pausa.") : "A pausa terminou.";
   if (!active) { detail.textContent = "Você já pode acessar o site novamente."; return; }
+  if (state.until === -1) {
+    detail.textContent = "O filtro de " + state.category + " está no modo Sempre. Você pode alterá-lo no Pulso.";
+    return;
+  }
   const end = new Date(state.until);
   const day = end.toDateString() === new Date().toDateString() ? "" : " em " + end.toLocaleDateString("pt-BR");
-  detail.textContent = "Você poderá voltar" + day + " às " + end.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) + ".";
+  const reason = state.category ? "O filtro de " + state.category + " está ativo. " : "";
+  detail.textContent = reason + "Você poderá voltar" + day + " às " + end.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) + ".";
 }
 back.addEventListener("submit", async event => {
   event.preventDefault();
@@ -32,4 +37,4 @@ back.addEventListener("submit", async event => {
   else { await chrome.tabs.create({}); await chrome.tabs.remove(tab.id); }
 });
 loadPrevious().then(refresh);
-setInterval(refresh, 2000);
+chrome.runtime.onMessage.addListener(message => { if (message === "politica") void refresh(); });

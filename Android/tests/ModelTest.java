@@ -42,5 +42,29 @@ public final class ModelTest {
             && restored.restriction(restored.targets("exemplo.leitor",null),window).reason.contains("Leitura"),
             "Agendas com nomes iguais mantêm saldos e bloqueio próprios após renomear, reordenar e reabrir");
         check(!Model.restoreUsage(restored,"{") && Model.decode("{")==null,"Dados corrompidos permitem recorrer à cópia anterior");
+        JSONObject profile14=new JSONObject().put("versao",3).put("minutos",18)
+            .put("apps",new JSONArray().put("exemplo.leitor")).put("sites",new JSONArray().put("manual.test"))
+            .put("limites",new JSONObject().put("site:manual.test",new JSONArray().put(7).put(15)))
+            .put("agenda",new JSONArray().put(new JSONArray().put("Leitura").put(1).put(720).put(60).put(true).put(-1).put("abc").put(3)))
+            .put("historico",new JSONArray().put(new JSONArray().put("Anterior").put(now-3000).put(now).put(true)))
+            .put("sessao",new JSONArray().put("Foco rápido").put(now).put(now+60000).put(false));
+        Focus migrated=Model.decode(profile14.toString());
+        check(migrated!=null && migrated.siteModes.get(SiteCatalog.Category.PORN)==SiteCatalog.Mode.OFF
+            && migrated.siteModes.get(SiteCatalog.Category.GAMBLING)==SiteCatalog.Mode.OFF,"Perfil 1.4 começa com os dois bloqueios desligados");
+        migrated.siteModes.set(SiteCatalog.Category.PORN,SiteCatalog.Mode.IN_FOCUS);
+        migrated.siteModes.set(SiteCatalog.Category.GAMBLING,SiteCatalog.Mode.ALWAYS);
+        JSONObject profile15=Model.encode(migrated);
+        Focus reopened=Model.decode(profile15.toString());
+        check(reopened.siteModes.get(SiteCatalog.Category.PORN)==SiteCatalog.Mode.IN_FOCUS
+            && reopened.siteModes.get(SiteCatalog.Category.GAMBLING)==SiteCatalog.Mode.ALWAYS
+            && reopened.minutes==18 && reopened.apps.contains("exemplo.leitor") && reopened.sites.contains("manual.test")
+            && reopened.limits.get("site:manual.test").dayMinutes==15 && reopened.routines.get(0).quota.hourMinutes==3
+            && reopened.active.end==now+60000 && reopened.history.get(0).title.equals("Anterior"),
+            "Gravar os modos independentes conserva a lista, os limites, a duração, o horário, a sessão e o histórico de 1.4");
+        profile15.getJSONObject("categoriasSites").put("apostas","invalido");
+        reopened=Model.decode(profile15.toString());
+        check(reopened.sites.contains("manual.test") && reopened.siteModes.get(SiteCatalog.Category.GAMBLING)==SiteCatalog.Mode.OFF
+            && reopened.siteModes.get(SiteCatalog.Category.PORN)==SiteCatalog.Mode.IN_FOCUS,
+            "Um modo inválido desativa só a categoria afetada");
     }
 }

@@ -26,6 +26,9 @@ public sealed record FocusData
     public string[] Apps { get; init; } = [];
     public Dictionary<string, SavedAppInfo> AppInfo { get; init; } = new(StringComparer.OrdinalIgnoreCase);
     public string[] Sites { get; init; } = [];
+    public SiteFilterMode PornFilter { get; init; }
+    public SiteFilterMode GamblingFilter { get; init; }
+    internal int EnabledSiteFilters => (PornFilter != SiteFilterMode.Off ? 1 : 0) + (GamblingFilter != SiteFilterMode.Off ? 1 : 0);
     public Routine[] Routines { get; init; } = [];
     public Entry[] History { get; init; } = [];
     public Session? Active { get; init; }

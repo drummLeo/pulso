@@ -184,6 +184,10 @@ public final class MainActivity extends Activity {
             case "permissao": permission(); break;
             case "duracao": if(f.active==null)customDuration(); break;
             case "site": addSite(); break;
+            case "categoriaSite":
+                for (SiteCatalog.Category category : SiteCatalog.Category.values())
+                    if (category.key.equals(state.getString("categoria"))) chooseSiteMode(category);
+                break;
             case "apps": appPicker(); break;
             case "limite":
                 String key=state.getString("alvo","");
@@ -311,7 +315,7 @@ public final class MainActivity extends Activity {
         LinearLayout protection=card(body);
         heading(protection,lastService?"Bloqueio ativado":"Ativar o bloqueio",lastService
             ? count(f.apps.size(),"aplicativo","aplicativos")+" e "+count(f.sites.size(),"site","sites")+" na sua lista."
-            : "Ative o serviço para aplicar as sessões e os limites de uso aos apps e sites da lista.");
+            : "Ative o serviço para aplicar as sessões, os limites de uso e o bloqueio de categorias de sites.");
         put(protection,button(this,lastService?"Editar lista":"Configurar acessibilidade",accent,accent_surface,()->{if(lastService)go(1);else permission();}),10);
         LinearLayout summary=card(body); heading(summary,"Foco de hoje",""); today=text(this,"",25,accent,true); put(summary,today,6);
         Focus.Slot next=f.next(now,ZoneId.systemDefault());
@@ -331,7 +335,7 @@ public final class MainActivity extends Activity {
     }
     private void permission() {
         AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Serviço de bloqueio")
-            .setMessage("O Pulso identifica o app em primeiro plano e lê a barra de endereço visível dos navegadores compatíveis para acompanhar os limites que você configurar, inclusive fora do foco. Durante uma sessão ou ao esgotar um limite, ele volta à tela inicial ao abrir um app da lista ou cobre o site em pausa. Os dados ficam neste celular.\n\nEm Acessibilidade, abra Aplicativos instalados e selecione Pulso • Bloqueio de foco. Você pode desligá-lo no mesmo lugar.")
+            .setMessage("O Pulso identifica o app em primeiro plano e lê a barra de endereço visível no Chrome, Edge e Samsung Internet. Ele usa o domínio para aplicar as categorias escolhidas e os limites de uso. Um app em pausa volta à tela inicial e um site em pausa recebe um aviso sobre a página. A opção Sempre protege sites também fora do foco. Os dados ficam neste celular.\n\nEm Acessibilidade, abra Aplicativos instalados e selecione Pulso • Bloqueio de foco. Você pode desligá-lo no mesmo lugar.")
             .setNegativeButton("Agora não",null).setPositiveButton("Abrir Acessibilidade",(d,w)->{
                 try {startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));}
                 catch(ActivityNotFoundException e){toast("Abra Acessibilidade nas Configurações do celular.");}
@@ -384,16 +388,33 @@ public final class MainActivity extends Activity {
         LinearLayout apps=card(body);
         heading(apps,"Aplicativos",selected==0?"Escolha os apps para pausar durante o foco ou limitar por tempo de uso.":count(selected,"app selecionado","apps selecionados"));
         put(apps,button(this,"Escolher aplicativos",accent,accent_surface,this::appPicker),10);
+        LinearLayout sites=card(body);
+        TextView siteHeading=heading(sites,"Sites","No Chrome, Edge e Samsung Internet, o Pulso verifica o domínio visível na barra de endereço. As regras incluem subdomínios.");
+        siteHeading.setAccessibilityHeading(true);
+        if (selected>=5) {
+            siteHeading.setFocusableInTouchMode(true);
+            put(apps,button(this,"Ir para sites",accent,accent_surface,()->{
+                siteHeading.requestFocus();
+                android.view.accessibility.AccessibilityManager accessibility=getSystemService(android.view.accessibility.AccessibilityManager.class);
+                if (accessibility!=null && accessibility.isTouchExplorationEnabled())
+                    siteHeading.performAccessibilityAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS,null);
+                scroll.smoothScrollTo(0,sites.getTop());
+            }),6);
+        }
         for (AppCatalog.Group group : groups) {
             TextView category = text(this, group.label + " · " + count(group.items.size(), "app", "apps"), 16, accent, true);
             category.setAccessibilityHeading(true);
             put(apps, category, 15);
             for (AppCatalog.Item app : group.items) ruleRow(apps, app.name, Limits.app(app.pkg), null);
         }
-        LinearLayout sites=card(body);
-        heading(sites,"Sites","No Chrome, Edge e Samsung Internet, o Pulso cobre a página quando a barra de endereço mostra um domínio da lista. Inclui subdomínios.");
         for(String site:f.sites)ruleRow(sites,site,Limits.site(site),()->model.edit(()->f.sites.remove(site)));
         put(sites,button(this,"Adicionar site",accent,accent_surface,this::addSite),9);
+        put(sites,text(this,"Categorias de sites",16,text_primary,true),14);
+        put(sites,text(this,"Durante o foco inclui a sessão rápida e os agendamentos, mesmo com saldo disponível. Sempre vale enquanto o serviço de bloqueio está ativo.",14,text_muted,false),4);
+        for (SiteCatalog.Category category : SiteCatalog.Category.values()) {
+            String label = category.label+" · "+f.siteModes.get(category).label;
+            put(sites,button(this,label,accent,accent_surface,()->chooseSiteMode(category)),6);
+        }
         LinearLayout shared=card(body);
         heading(shared,"Limite compartilhado","Os apps e sites da lista usam o mesmo saldo. Você também pode definir um limite em cada item.");
         usageLabel(shared,Limits.SHARED);
@@ -402,6 +423,18 @@ public final class MainActivity extends Activity {
         put(shared,button(this,"Limites por agendamento",accent,accent_surface,()->go(2)),6);
         LinearLayout setup=card(body); heading(setup,"Serviço de bloqueio",lastService?"O serviço está ativo neste celular.":"Ative em Acessibilidade para contar o uso e aplicar os bloqueios.");
         put(setup,button(this,lastService?"Gerenciar serviço":"Configurar acessibilidade",accent,accent_surface,this::permission),8);
+    }
+    private void chooseSiteMode(SiteCatalog.Category category) {
+        SiteCatalog.Mode[] options=SiteCatalog.Mode.values();
+        String[] labels=new String[options.length];
+        for (int i=0; i<options.length; i++) labels[i]=options[i].label;
+        SiteCatalog.Mode current=f.siteModes.get(category);
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle(category.label).setNegativeButton("Cancelar",null)
+            .setSingleChoiceItems(labels,current.ordinal(),(choice,index)->{
+                choice.dismiss();
+                if (options[index]!=current) model.edit(()->f.siteModes.set(category,options[index]));
+            }).show();
+        remember(dialog,"categoriaSite",state->state.putString("categoria",category.key));
     }
     private void ruleRow(LinearLayout parent,String label,String key,Runnable removeItem) {
         LinearLayout line=row(this); put(parent,line,5);

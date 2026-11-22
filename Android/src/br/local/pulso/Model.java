@@ -117,8 +117,12 @@ final class Model {
         } catch (JSONException corrupt) { return false; }
     }
     static JSONObject encode(Focus f) throws JSONException {
-        JSONObject o = new JSONObject().put("versao", 3).put("minutos", f.minutes)
+        JSONObject o = new JSONObject().put("versao", 4).put("minutos", f.minutes)
             .put("apps", new JSONArray(f.apps)).put("sites", new JSONArray(f.sites));
+        JSONObject categories = new JSONObject();
+        for (SiteCatalog.Category category : SiteCatalog.Category.values())
+            categories.put(category.key,f.siteModes.get(category).key);
+        o.put("categoriasSites",categories);
         JSONObject limits = new JSONObject();
         for (Limits.Quota q : f.limits.configured.values())
             limits.put(q.key,new JSONArray().put(q.hourMinutes).put(q.dayMinutes));
@@ -139,8 +143,11 @@ final class Model {
         try {
             JSONObject o = new JSONObject(raw);
             int version = o.getInt("versao");
-            if (version<1 || version>3) return null;
+            if (version<1 || version>4) return null;
             Focus f = new Focus();
+            JSONObject categories = o.optJSONObject("categoriasSites");
+            if (version >= 4 && categories != null) for (SiteCatalog.Category category : SiteCatalog.Category.values())
+                f.siteModes.set(category,SiteCatalog.Mode.read(categories.optString(category.key)));
             int minutes = o.getInt("minutos");
             if (Focus.validMinutes(minutes)) f.minutes = minutes;
             JSONArray apps = o.getJSONArray("apps"), sites = o.getJSONArray("sites");

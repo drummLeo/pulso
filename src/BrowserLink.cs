@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net;
 using System.Net.WebSockets;
 using System.Reflection;
@@ -20,17 +21,19 @@ public sealed class BrowserLink
     private readonly string folder;
     private readonly int port;
     private readonly string protocol;
-    private sealed record Client(string Browser, bool MeasuresUsage, string? Site, long Seen);
+    private sealed record Client(string Browser, bool MeasuresUsage, bool SupportsFilters, string? Site, bool CategoryPaused, long Revision, long Seen);
     private sealed record SiteLimit(string Domain, long Until);
-    private sealed record Policy(long Revision, long Until, string[] Sites, string[] Watch, SiteLimit[] Limits, string Theme);
+    private sealed record Policy(long Revision, long Until, string[] Sites, string[] Watch, SiteLimit[] Limits, string Theme, SiteFilterPolicy Filters);
     private readonly ConcurrentDictionary<Guid, Client> clients = new();
     private readonly object policyLock = new();
-    private volatile Policy policy = new(0, 0, [], [], [], "system");
+    private volatile Policy policy = new(0, 0, [], [], [], "system", default);
     private WebApplication? server;
     public string? Error { get; private set; }
     public string? ExtensionWarning { get; private set; }
     public string Connected => string.Join(" e ", clients.Values.Select(c => c.Browser).Distinct().Order());
     public bool RequiresReload => clients.Values.Any(c => !c.MeasuresUsage);
+    public bool RequiresFilterReload => clients.Values.Any(c => !c.SupportsFilters);
+    public bool HasFilterClient => clients.Values.Any(c => c.SupportsFilters);
     public string ExtensionFolder => Path.Combine(folder, "Extensao");
 
     public BrowserLink(string folder, int port = Port)
@@ -88,18 +91,19 @@ public sealed class BrowserLink
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 
-    public void Update(FocusData data) => Update(data, new UsagePolicy(data, DateTimeOffset.Now, TimeZoneInfo.Local).Focus?.Until);
+    public void Update(FocusData data) => Update(data, new UsagePolicy(data, DateTimeOffset.Now, TimeZoneInfo.Local));
 
-    internal void Update(FocusData data, DateTimeOffset? focusEnd)
+    internal void Update(FocusData data, UsagePolicy rules)
     {
+        DateTimeOffset? focusEnd = rules.Focus?.Until;
         long until = focusEnd?.ToUnixTimeMilliseconds() ?? 0;
         string[] sites = focusEnd.HasValue ? data.Sites : [];
         string theme = data.Theme is "light" or "dark" ? data.Theme : "system";
         lock (policyLock)
         {
             var previous = policy;
-            if (previous.Until != until || !previous.Sites.SequenceEqual(sites) || previous.Theme != theme)
-                policy = previous with { Revision = previous.Revision + 1, Until = until, Sites = sites, Theme = theme };
+            if (previous.Until != until || previous.Filters != rules.Filters || previous.Theme != theme || !previous.Sites.SequenceEqual(sites))
+                policy = previous with { Revision = previous.Revision + 1, Until = until, Sites = sites, Theme = theme, Filters = rules.Filters };
         }
     }
 
@@ -117,14 +121,20 @@ public sealed class BrowserLink
         }
     }
 
-    public string? ForegroundSite(string? processName)
+    public string? ForegroundSite(string? processName) => UsageTarget(processName).Site;
+
+    internal (string? App, string? Site) UsageTarget(string? processName)
     {
         string? browser = processName?.ToLowerInvariant() switch { "chrome" => "Chrome", "msedge" => "Edge", _ => null };
-        if (browser == null || policy.Watch.Length == 0) return null;
-        long cutoff = Environment.TickCount64 - 8000;
-        return clients.Values.Where(c => c.Browser == browser && c.Site != null && c.Seen >= cutoff
-                && Array.BinarySearch(policy.Watch, c.Site, StringComparer.Ordinal) >= 0)
-            .MaxBy(c => c.Seen)?.Site;
+        if (browser == null) return (processName, null);
+        var current = policy;
+        bool filtersActive = current.Filters.IsActiveAt(DateTimeOffset.UtcNow);
+        if (current.Watch.Length == 0 && !filtersActive) return (processName, null);
+        long cutoff = Stopwatch.GetTimestamp() - 8 * Stopwatch.Frequency;
+        var tab = clients.Values.Where(c => c.Browser == browser && c.Revision == current.Revision && c.Seen >= cutoff
+                && (c.Site != null || c.CategoryPaused && filtersActive))
+            .MaxBy(c => c.Seen);
+        return tab?.CategoryPaused == true ? (null, null) : (processName, tab?.Site);
     }
 
     public async Task StartAsync()
@@ -188,7 +198,7 @@ public sealed class BrowserLink
             }
             return null;
         }
-        async Task ReceiveReports(string browser)
+        async Task ReceiveReports(string browser, bool supportsFilters)
         {
             while (await Read() is { } report)
             {
@@ -199,8 +209,15 @@ public sealed class BrowserLink
                 if (!long.TryParse(fields[1], out var revision)) return;
                 if (revision != current.Revision) continue;
                 string? site = modern && fields[2].Length > 0 ? fields[2] : null;
-                if (site != null && Array.BinarySearch(current.Watch, site, StringComparer.Ordinal) < 0) return;
-                clients[id] = new(browser, modern, site, Environment.TickCount64);
+                bool categoryPaused = false;
+                if (site == "@pause")
+                {
+                    if (!supportsFilters) return;
+                    categoryPaused = current.Filters.IsActiveAt(DateTimeOffset.UtcNow);
+                    site = null;
+                }
+                else if (site != null && Array.BinarySearch(current.Watch, site, StringComparer.Ordinal) < 0) return;
+                clients[id] = new(browser, modern, supportsFilters, site, categoryPaused, revision, Stopwatch.GetTimestamp());
             }
         }
         async Task SendPolicies()
@@ -211,19 +228,22 @@ public sealed class BrowserLink
                 var payload = JsonSerializer.SerializeToUtf8Bytes(new
                 {
                     version = 2, revision = current.Revision, until = current.Until, sites = current.Sites, theme = current.Theme,
-                    watch = current.Watch, limits = current.Limits.Select(s => new { domain = s.Domain, until = s.Until })
+                    watch = current.Watch, limits = current.Limits.Select(s => new { domain = s.Domain, until = s.Until }),
+                    filters = new { porn = current.Filters.Porn, gambling = current.Filters.Gambling }
                 });
                 await socket.SendAsync(new ArraySegment<byte>(payload), WebSocketMessageType.Text, true, token);
-                int ticks = current.Watch.Length > 0 ? 12 : 32;
+                int ticks = current.Watch.Length > 0 || current.Filters.IsActiveAt(DateTimeOffset.UtcNow) ? 12 : 32;
                 for (int tick = 0; tick < ticks && ReferenceEquals(current, policy); tick++)
                     await Task.Delay(250, token);
             }
         }
         try
         {
-            var browser = await Read();
-            if (browser is not ("Edge" or "Chrome")) return;
-            Task sending = SendPolicies(), receiving = ReceiveReports(browser);
+            var hello = await Read();
+            if (hello is not ("Edge" or "Chrome" or "Edge/1.5" or "Chrome/1.5")) return;
+            bool supportsFilters = hello.EndsWith("/1.5", StringComparison.Ordinal);
+            string browser = supportsFilters ? hello[..^4] : hello;
+            Task sending = SendPolicies(), receiving = ReceiveReports(browser, supportsFilters);
             await Task.WhenAny(sending, receiving);
             lifetime.Cancel();
             socket.Abort();

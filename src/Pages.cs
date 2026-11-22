@@ -46,7 +46,13 @@ public partial class MainWindow
             Ui.Row(schedules, info, Ui.Button("Editar", () => EditRoutine(routine), null, "Editar limite do agendamento " + routine.Name));
         }
         Ui.Buttons(schedules, Ui.Button("Gerenciar agendamentos", () => Navigate(SchedulesId), "Quiet"));
-        var sites = Ui.Section(ContentPage, "Sites", "Adicione um domínio ou cole um link. Os subdomínios também entram na lista.");
+        var sites = Ui.Section(ContentPage, "Sites", "Escolha quando bloquear cada categoria no Chrome ou no Edge.");
+        var categories = new WrapPanel();
+        sites.Children.Add(categories);
+        AddSiteFilter(categories, "Pornografia", data.PornFilter, mode => data with { PornFilter = mode });
+        AddSiteFilter(categories, "Apostas", data.GamblingFilter, mode => data with { GamblingFilter = mode });
+        sites.Children.Add(Ui.Text("Durante o foco inclui sessões rápidas e agendamentos, mesmo com saldo por hora. Sempre vale enquanto o Pulso estiver aberto. Só os itens adicionados à lista entram na contagem de uso.", "Hint", 8));
+        sites.Children.Add(Ui.Text("Adicione um domínio ou cole um link. Os subdomínios também entram na lista.", "Hint", 16));
         var input = Ui.TextInput("", 2048);
         siteInput = input;
         sites.Children.Add(Ui.Label("Endereço do site", input));
@@ -88,6 +94,34 @@ public partial class MainWindow
                 AddUsageRow(apps, UsageClock.AppKey(name), name, remove, app.DisplayName);
             }
         }
+    }
+
+    private void AddSiteFilter(Panel parent, string label, SiteFilterMode saved, Func<SiteFilterMode, FocusData> configure)
+    {
+        var field = new StackPanel { Margin = new Thickness(0, 0, 16, 0) };
+        var choice = new ComboBox
+        {
+            ItemsSource = new[] { "Desativado", "Durante o foco", "Sempre" }, SelectedIndex = (int)saved,
+            MinWidth = 154, MinHeight = 34, VerticalContentAlignment = VerticalAlignment.Center
+        };
+        field.Children.Add(Ui.Label(label, choice));
+        field.Children.Add(choice);
+        parent.Children.Add(field);
+        choice.SelectionChanged += (_, _) =>
+        {
+            if (choice.SelectedIndex < 0 || choice.SelectedIndex == (int)saved) return;
+            var selected = (SiteFilterMode)choice.SelectedIndex;
+            var next = configure(selected);
+            if (!WriteState(next))
+            {
+                choice.SelectedIndex = (int)saved;
+                return;
+            }
+            saved = selected;
+            data = next;
+            Enforce(DateTimeOffset.Now);
+            RefreshStatus();
+        };
     }
 
     private void AddUsageRow(Panel section, string? key, string? name, Button? remove, string? friendlyName = null)
@@ -413,7 +447,7 @@ public partial class MainWindow
         var info = Ui.Section(ContentPage, "Conexão com este PC", "");
         browserState = Ui.Text("", null, 8); browserState.FontWeight = FontWeights.SemiBold;
         info.Children.Add(browserState);
-        info.Children.Add(Ui.Text(bridge.Error ?? "A extensão identifica o domínio da lista quando a aba está em primeiro plano. O histórico de navegação fica no navegador.", "Hint", 4));
+        info.Children.Add(Ui.Text(bridge.Error ?? "A extensão filtra as categorias no próprio navegador. Para medir o uso, ela informa ao Pulso o domínio da lista manual quando a aba está em primeiro plano.", "Hint", 4));
         var guide = Ui.Section(ContentPage, "Instalar a extensão", "Faça isso uma vez em cada perfil do Chrome ou do Edge que quiser usar.");
         void Step(string title, string detail)
         {

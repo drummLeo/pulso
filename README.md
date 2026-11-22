@@ -31,6 +31,20 @@ Nos dois aparelhos, o seletor e a lista de apps escolhidos mostram grupos como *
 
 Para adicionar todos os jogos encontrados, use **Selecionar todos** no grupo **Jogos** do Windows ou **Marcar** no mesmo grupo do Android. Você pode desmarcar itens individuais antes de salvar. Durante uma busca, a ação do grupo vale só para os resultados visíveis. Apps instalados depois podem ser escolhidos na próxima busca.
 
+### Bloquear sites de pornografia e apostas
+
+No Windows, abra **Lista de bloqueio → Sites**. No Galaxy, abra **Lista → Sites**. Se a lista de aplicativos for longa, toque em **Ir para sites** para chegar direto ao cartão. Escolha um modo para **Pornografia** e outro para **Apostas**. As duas categorias começam desativadas, inclusive ao atualizar uma instalação anterior.
+
+| Modo | Quando o bloqueio vale |
+| --- | --- |
+| **Desativado** | A categoria fica desligada. Os domínios que você cadastrou continuam com suas próprias regras. |
+| **Durante o foco** | Durante uma sessão rápida ou um agendamento ativo. Em um agendamento com saldo por hora, os sites da categoria ficam bloqueados desde o início do horário. |
+| **Sempre** | Também fora das sessões e dos agendamentos, enquanto a proteção do Pulso estiver funcionando. |
+
+Por exemplo, deixe **Apostas** em **Sempre** e **Pornografia** em **Durante o foco**. No PC, mantenha o Pulso aberto, mesmo que esteja na bandeja, e a extensão conectada no Chrome ou no Edge. Se já usava a extensão, clique em **Recarregar** no gerenciador de extensões de cada perfil. No Galaxy, ative a Acessibilidade do Pulso e use o Chrome, o Edge ou o Samsung Internet com a barra de endereço visível.
+
+O filtro reconhece domínios e seus subdomínios. As listas vêm no executável e no APK, e a comparação ocorre no aparelho. Se um site novo ainda estiver fora do catálogo, você pode adicioná-lo manualmente à sua lista de foco. A categoria **Apostas** também cobre o sufixo brasileiro `.bet.br`. [Ministério da Fazenda](https://www.gov.br/fazenda/pt-br/composicao/orgaos/secretaria-de-premios-e-apostas/apostas-de-quota-fixa)
+
 ## Limites, agenda e aparência
 
 - **Limite individual.** No Windows, clique em **Configurar limite** ao lado de um app ou site. No Android, toque em **Limite**. Informe de 1 a 60 minutos por hora, de 1 a 1.440 minutos por dia ou preencha os dois campos.
@@ -55,13 +69,24 @@ dotnet run --project .\tests\EngineChecks.csproj
 
 Os verificadores do Windows registram as falhas no terminal. Para testar a apresentação do aviso com o Pulso na bandeja usando uma lista fictícia, execute `dotnet run --project .\tests\Windows\WindowsChecks.csproj -- aviso-bandeja`.
 
-Para verificar a descoberta de aplicativos e exercitar o seletor com dados fictícios em uma área de trabalho privada do Windows, execute os três comandos abaixo. O último requer Python 3.
+Para verificar a descoberta de aplicativos, os filtros de sites e os seletores em uma área de trabalho privada do Windows, execute os comandos abaixo. O último requer Python 3.
 
 ```powershell
 dotnet build .\tests\Windows\WindowsChecks.csproj -c Release
 dotnet run --no-build -c Release --project .\tests\Windows\WindowsChecks.csproj -- catalogo
+dotnet run --no-build -c Release --project .\tests\Windows\WindowsChecks.csproj -- filtros-navegador
 python .\tests\Windows\test_catalogo_interface.py
 ```
+
+Para testar a extensão em um perfil temporário do navegador, compile os verificadores acima. Na primeira execução, instale o Playwright e o Chromium com os dois primeiros comandos.
+
+```powershell
+python -m pip install playwright
+python -m playwright install chromium
+python .\tests\browser_check.py .\tests\Windows\bin\Release\net10.0-windows\Pulso.Verificacao.exe --prazo-conexao
+```
+
+O teste usa páginas locais para conferir bloqueio, liberação e reconexão. Para usar o Chrome ou o Edge já instalado, acrescente `--chromium "caminho\do\navegador.exe" --via-protocolo`.
 
 **Android.** Use Python 3, um JDK completo e o Android SDK com uma plataforma e as Build Tools instaladas. O script aceita o JDK do Android Studio ou `JAVA_HOME` e gera `Android\Pulso-Galaxy.apk`. A chave de assinatura fica em `%LOCALAPPDATA%\PulsoAndroid\Assinatura`. Atualizar uma instalação preservando os dados exige a mesma assinatura.
 
@@ -72,11 +97,15 @@ python .\Android\tests\test_tema.py
 
 Para testar a seleção por categoria no Android, instale o APK em um emulador descartável chamado `PulsoTeste17` e execute `python .\Android\tests\test_categorias_android.py --serial emulator-5584`, substituindo o serial pelo do seu emulador. O teste usa uma lista fictícia e apaga os dados do Pulso nesse emulador.
 
+Para testar os filtros de sites, use o mesmo AVD com uma imagem AOSP do Android e execute `python .\Android\tests\test_sites_android.py --serial emulator-5584`. O teste usa barras de endereço de exemplo, instala os pacotes de teste que estiverem ausentes e verifica os bloqueios com páginas locais.
+
+As compilações usam as listas de domínios já incluídas em `shared/`. Para reproduzi-las, execute `python tools/gerar_listas_sites.py`. A opção `--check` confere os arquivos com as revisões de origem. O gerador usa as categorias Adult e Gambling de ShadowWhisperer, remove subdomínios redundantes e exclui sufixos de registro e hospedagem identificados pela Public Suffix List. O sufixo reservado `.bet.br` é incluído explicitamente. [Listas de origem](https://github.com/ShadowWhisperer/BlockLists/tree/8ed495030a7169b626a81b45761b84b8c36bf8e5) · [Licença Unlicense](https://github.com/ShadowWhisperer/BlockLists/blob/8ed495030a7169b626a81b45761b84b8c36bf8e5/LICENSE) · [Public Suffix List](https://publicsuffix.org/list/)
+
 ## Versões e alterações recentes
 
 <!-- pulso:resumo:inicio -->
 
-**Windows** 1.4.0 · **Android** 1.4 · **Extensão para Chrome e Edge** 1.2.0
+**Windows** 1.5.0 · **Android** 1.5 · **Extensão para Chrome e Edge** 1.5.0
 
 - 22/11/2026 — Adiciona busca de aplicativos instalados e seleção por categoria no Pulso 1.4 · [688cfb8](https://github.com/drummLeo/pulso/commit/688cfb8c792d211daa267c1b97b1d5783bee7a49)
 - 22/11/2026 — Adiciona saldo por agendamento e aviso de aplicativo em pausa no Pulso 1.3 · [a4b227b](https://github.com/drummLeo/pulso/commit/a4b227bd21d1ace0ab6e671c8b4aec5094cfb729)

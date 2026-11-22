@@ -1,8 +1,8 @@
 <resources>
     <string name="app_name">Pulso</string>
     <string name="service_name">Pulso • Bloqueio de foco</string>
-    <string name="service_description">O Pulso identifica o aplicativo em primeiro plano e lê a barra de endereço visível de navegadores compatíveis para contar o tempo dos limites configurados. Durante o foco ou ao esgotar um limite, leva você à tela inicial ao abrir um app em pausa e cobre sites em pausa. O processamento é feito no aparelho. Você pode desligar o serviço nas configurações de Acessibilidade.</string>
-    <string name="service_summary">Aplica sessões de foco e limites de uso aos apps e sites da sua lista.</string>
+    <string name="service_description">O Pulso identifica o aplicativo em primeiro plano e lê a barra de endereço visível de navegadores compatíveis. Ele conta o tempo dos limites configurados e compara o domínio com as categorias escolhidas. Um app em pausa volta à tela inicial e um site em pausa recebe um aviso sobre a página. A opção Sempre também vale fora do foco. O processamento é feito no aparelho. Você pode desligar o serviço nas configurações de Acessibilidade.</string>
+    <string name="service_summary">Aplica o foco, os limites de uso e o bloqueio de categorias de sites.</string>
     <bool name="light_system_bars">true</bool>
     <style name="PulsoBase" parent="@android:style/Theme.Material.Light.NoActionBar"/>
     <style name="PulsoTheme" parent="@style/PulsoBase">

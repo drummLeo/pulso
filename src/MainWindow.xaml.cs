@@ -25,6 +25,7 @@ public partial class MainWindow : Window
     private string[] watchedSites = [];
     private bool measuringUsage, quotaWindowOpen;
     private DateTimeOffset? siteFocusEnd;
+    private SiteFilterPolicy siteFilters;
     private readonly UsageMeter meter = new();
     private readonly Stopwatch uptime = Stopwatch.StartNew();
     private WindowsUsageSession? windowsSession;
@@ -289,8 +290,7 @@ public partial class MainWindow : Window
     private void SampleUsage(DateTimeOffset now)
     {
         if (!measuringUsage) return;
-        string? app = windowsSession?.CanMeasure == true ? WindowBlocker.ForegroundProcess() : null;
-        string? site = app != null && watchedSites.Length > 0 ? bridge.ForegroundSite(app) : null;
+        var (app, site) = bridge.UsageTarget(windowsSession?.CanMeasure == true ? WindowBlocker.ForegroundProcess() : null);
         var next = meter.Sample(data, now, uptime.Elapsed, app, site, Zone);
         if (!ReferenceEquals(next, data)) { data = next; usageDirty = true; }
     }
@@ -298,10 +298,11 @@ public partial class MainWindow : Window
     private bool Enforce(DateTimeOffset now, bool settingsChanged = false)
     {
         var policy = new UsagePolicy(data, now, Zone);
-        if (settingsChanged || siteFocusEnd != policy.Focus?.Until)
+        if (settingsChanged || siteFocusEnd != policy.Focus?.Until || siteFilters != policy.Filters)
         {
             siteFocusEnd = policy.Focus?.Until;
-            bridge.Update(data, siteFocusEnd);
+            siteFilters = policy.Filters;
+            bridge.Update(data, policy);
         }
         bool quotaOpen = policy.ActiveQuotas.Length != 0;
         bool watchChanged = settingsChanged || quotaOpen != quotaWindowOpen;
@@ -375,9 +376,13 @@ public partial class MainWindow : Window
     }
     private string Coverage()
     {
+        if (data.EnabledSiteFilters > 0 && bridge.RequiresFilterReload) return "Recarregue a extensão do navegador para aplicar os filtros de sites.";
         if (data.Sites.Length > 0 && bridge.RequiresReload) return "Recarregue a extensão na tela Navegadores para medir os sites.";
+        if (data.EnabledSiteFilters > 0 && bridge.Connected.Length == 0) return "Conecte a extensão para aplicar os filtros de sites.";
         if (data.Sites.Length > 0 && bridge.Connected.Length == 0) return "Sites aguardam a conexão do navegador.";
-        if (data.Sites.Length + data.Apps.Length == 0) return "Adicione o que deseja colocar em pausa.";
+        if (data.Sites.Length + data.Apps.Length + data.EnabledSiteFilters == 0) return "Adicione o que deseja colocar em pausa.";
+        if (data.EnabledSiteFilters > 0 && data.Sites.Length + data.Apps.Length == 0)
+            return siteFilters.ActiveCount > 0 ? "Bloqueio por categoria em vigor no navegador." : "O bloqueio por categoria aguarda a próxima sessão ou agendamento.";
         if (quotaWindowOpen) return "O limite por hora do agendamento está em vigor.";
         if (data.Usage.Enabled) return "Limites de uso ativos na lista.";
         return "Esta lista vale para todas as sessões.";
@@ -390,17 +395,21 @@ public partial class MainWindow : Window
         string browsers = bridge.Connected;
         string connection = bridge.Error != null ? "Conexão indisponível" : browsers.Length == 0 ? "Aguardando extensão" : browsers + (browsers.Contains(" e ") ? " conectados" : " conectado");
         RailState.Text = connection;
-        const string reload = "Para medir sites, clique em Recarregar na extensão Pulso em chrome://extensions ou edge://extensions.";
-        if (browserState != null) browserState.Text = bridge.Error ?? bridge.ExtensionWarning ?? (bridge.RequiresReload ? reload : connection);
-        if (siteState != null) siteState.Text = bridge.Error ?? bridge.ExtensionWarning ?? (bridge.RequiresReload ? reload :
-            browsers.Length == 0 ? "Conecte a extensão para medir e bloquear sites." : "Extensão conectada · " + browsers);
+        const string reloadAction = "clique em Recarregar no cartão da extensão Pulso em chrome://extensions ou edge://extensions.";
+        string? reload = bridge.RequiresReload ? "Para medir sites e usar os filtros, " + reloadAction
+            : bridge.RequiresFilterReload ? "Para aplicar os filtros de sites, " + reloadAction : null;
+        if (browserState != null) browserState.Text = bridge.Error ?? bridge.ExtensionWarning ?? reload ?? connection;
+        if (siteState != null) siteState.Text = bridge.Error ?? bridge.ExtensionWarning ?? reload ??
+            (browsers.Length == 0 ? "Conecte a extensão para medir e bloquear sites." : "Extensão conectada · " + browsers);
         if (page is RulesId or SchedulesId) RefreshUsageLabels(now);
         if (historyToday != null) historyToday.Text = MinutesText(FocusClock.Today(data, now, Zone));
-        var status = active ? "Em foco" : blocked.Count > 0 || pausedSites.Count > 0 ? "Limite atingido" : quotaWindowOpen ? "Limite agendado" : "Em espera";
+        bool filtering = siteFilters.ActiveCount > 0 && bridge.HasFilterClient;
+        var status = active ? "Em foco" : blocked.Count > 0 || pausedSites.Count > 0 ? "Limite atingido" : quotaWindowOpen ? "Limite agendado"
+            : filtering ? (siteFilters.ActiveCount == 1 ? "Filtro de sites ativo" : "Filtros de sites ativos") : "Em espera";
         StatusText.Text = status;
         if (lastStatus != status)
         {
-            StatusDot.SetResourceReference(Shape.FillProperty, active ? "StatusActive" : "StatusIdle");
+            StatusDot.SetResourceReference(Shape.FillProperty, active || filtering ? "StatusActive" : "StatusIdle");
             if (tray != null) tray.Text = "Pulso · " + status;
             lastStatus = status;
         }
@@ -427,6 +436,7 @@ public partial class MainWindow : Window
             if (b == PCustom) b.Content = custom ? data.Minutes + " min" : "Outro";
         }
         HomeTargets.Text = Count(data.Apps.Length, "app", "apps") + "  ·  " + Count(data.Sites.Length, "site", "sites");
+        if (data.EnabledSiteFilters > 0) HomeTargets.Text += "  ·  " + Count(data.EnabledSiteFilters, "filtro", "filtros");
         HomeCoverage.Text = Coverage();
         HomeMinutes.Text = MinutesText(FocusClock.Today(data, now, Zone));
         int sessions = data.History.Count(e => e.End.LocalDateTime.Date == now.LocalDateTime.Date);
@@ -458,8 +468,9 @@ public partial class MainWindow : Window
         {
             if (Commit(FocusClock.Start(data, DateTimeOffset.Now, data.Minutes)))
             {
-                if (data.Sites.Length > 0 && bridge.Connected.Length == 0) Notify("Sessão iniciada. Conecte o navegador para ativar o bloqueio de sites.");
-                else if (data.Sites.Length + data.Apps.Length == 0) Notify("Cronômetro iniciado. Você pode adicionar itens em Lista de bloqueio.");
+                if (data.EnabledSiteFilters > 0 && bridge.RequiresFilterReload) Notify("Sessão iniciada. Recarregue a extensão do navegador para aplicar os filtros de sites.");
+                else if (data.Sites.Length + data.EnabledSiteFilters > 0 && bridge.Connected.Length == 0) Notify("Sessão iniciada. Conecte o navegador para ativar o bloqueio de sites.");
+                else if (data.Sites.Length + data.Apps.Length + data.EnabledSiteFilters == 0) Notify("Cronômetro iniciado. Você pode adicionar itens em Lista de bloqueio.");
             }
             return;
         }

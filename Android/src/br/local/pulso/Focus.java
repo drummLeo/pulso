@@ -1,7 +1,6 @@
 package br.local.pulso;
 
 import java.net.IDN;
-import java.net.URI;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -21,6 +20,7 @@ final class Focus {
     int minutes = 25;
     final Set<String> apps = new LinkedHashSet<>();
     final Set<String> sites = new LinkedHashSet<>();
+    final SiteCatalog.Settings siteModes = new SiteCatalog.Settings();
     final Limits limits = new Limits();
     final List<Routine> routines = new ArrayList<>();
     final List<Entry> history = new ArrayList<>();
@@ -112,6 +112,15 @@ final class Focus {
         }
         return result;
     }
+    long focusForSites(long now,ZoneId zone) {
+        long end = active != null && active.start <= now && active.end > now ? active.end : 0;
+        for (Routine r : routines) {
+            Slot s=current(r,now,zone);
+            // An immediate occurrence marked lastDay is represented by active, or was cancelled.
+            if (s!=null && (r.quota.hourMinutes>0 || s.day!=r.lastDay)) end=Math.max(end,s.end);
+        }
+        return end;
+    }
     boolean tick(long now, ZoneId zone) {
         boolean changed = false;
         if (active != null && active.end <= now) { finish(active.end, true); changed = true; }
@@ -189,12 +198,19 @@ final class Focus {
     static String host(String input) {
         if (input == null) return null;
         String text = input.trim();
-        if (text.isEmpty() || text.length() > 4096 || text.indexOf('\\') >= 0) return null;
+        int start=0;
+        if (text.regionMatches(true,0,"http://",0,7)) start=7;
+        else if (text.regionMatches(true,0,"https://",0,8)) start=8;
+        int end=start;
+        while (end<text.length()) {
+            char c=text.charAt(end);
+            if (c=='/' || c=='?' || c=='#') break;
+            if (c=='@' || c=='%' || c=='\\' || end-start>=4096) return null;
+            end++;
+        }
+        if (end==start) return null;
+        String authority=text.substring(start,end);
         try {
-            URI uri = new URI(text.contains("://") ? text : "https://" + text);
-            String scheme = uri.getScheme(), authority = uri.getRawAuthority();
-            if (!("https".equalsIgnoreCase(scheme) || "http".equalsIgnoreCase(scheme))
-                    || authority == null || authority.contains("@") || authority.contains("%")) return null;
             int colon = authority.lastIndexOf(':');
             if (colon >= 0) {
                 if (!authority.substring(colon + 1).matches("[0-9]{1,5}")) return null;
@@ -206,7 +222,7 @@ final class Focus {
             if (domain.length() > 253 || domain.indexOf('.') < 1) return null;
             for (String label : domain.split("\\.", -1)) if (label.isEmpty() || label.length() > 63) return null;
             return domain;
-        } catch (IllegalArgumentException | java.net.URISyntaxException invalid) { return null; }
+        } catch (IllegalArgumentException invalid) { return null; }
     }
     static String rule(String text) {
         String name = host(text);

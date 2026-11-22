@@ -51,9 +51,10 @@ final class Ui {
         Context c=parent.getContext(); LinearLayout box=col(c); pad(box,17,16,17,16);
         box.setBackground(bg(c,card_surface,17,true)); put(parent,box,12); return box;
     }
-    static void heading(LinearLayout parent,String title,String hint) {
-        Context c=parent.getContext(); put(parent,text(c,title,20,text_primary,true),0);
+    static TextView heading(LinearLayout parent,String title,String hint) {
+        Context c=parent.getContext(); TextView label=text(c,title,20,text_primary,true); put(parent,label,0);
         if(!hint.isEmpty())put(parent,text(c,hint,14,text_muted,false),6);
+        return label;
     }
     static String duration(long millis) {
         long m=Math.max(0,millis/60000L);

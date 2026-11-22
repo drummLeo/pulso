@@ -9,6 +9,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
+import android.content.res.Resources;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.os.Build;
@@ -24,6 +25,8 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import java.io.IOException;
+import java.io.InputStream;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -51,6 +54,9 @@ public final class FocusService extends AccessibilityService {
     private final Limits.Tracker tracker = new Limits.Tracker();
     private List<String> lastTargets = Collections.emptyList();
     private boolean registered, pending, watchingBar, dirty, enforcing;
+    private static SiteCatalog siteCatalog;
+    private boolean loadingCatalog;
+    private long retryCatalogAt;
     private long eventAt, lastCheckpoint;
     private Model model;
     private Set<String> essential, launchers;
@@ -104,8 +110,7 @@ public final class FocusService extends AccessibilityService {
         if (!enforcing && notice==null) return;
         String pkg=String.valueOf(event.getPackageName());
         if (event.getEventType()==AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && launchers.contains(pkg)) ejected="";
-        if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-                && !browser(pkg)) return;
+        if (event.getEventType() != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && !browser(pkg)) return;
         if (eventAt == 0) eventAt = event.getEventTime();
         queueCheck();
     }
@@ -117,9 +122,39 @@ public final class FocusService extends AccessibilityService {
         AccessibilityServiceInfo info = getServiceInfo();
         if (info == null) return;
         info.eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED |
-            (next ? AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED : 0);
+            (next ? AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED | AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED : 0);
         setServiceInfo(info);
         watchingBar = next;
+    }
+    private void loadSiteCatalog() {
+        if (siteCatalog != null || loadingCatalog || SystemClock.uptimeMillis() < retryCatalogAt) return;
+        loadingCatalog = true;
+        Resources resources = getResources();
+        new Thread(()->{
+            SiteCatalog result = null;
+            try (InputStream porn = resources.openRawResource(R.raw.site_porn);
+                 InputStream gambling = resources.openRawResource(R.raw.site_gambling)) {
+                result = new SiteCatalog(porn,gambling);
+            } catch (IOException | Resources.NotFoundException unavailable) {
+                android.util.Log.e("Pulso","Não foi possível ler as categorias de sites.",unavailable);
+            }
+            final SiteCatalog loaded = result;
+            handler.post(()->{
+                loadingCatalog = false;
+                if (loaded != null) siteCatalog = loaded;
+                else retryCatalogAt = SystemClock.uptimeMillis()+30000;
+                if (registered) queueCheck();
+            });
+        },"Pulso-dominios").start();
+    }
+    private Limits.Block categoryBlock(String host, Focus f, long focusEnd) {
+        return siteCatalog == null ? null : siteCatalog.block(host,f.siteModes,focusEnd);
+    }
+    private static Limits.Block siteBlock(Limits.Block manual,Limits.Block category) {
+        if (category == null) return manual;
+        if (manual != null && manual.end > category.end)
+            return new Limits.Block(manual.end,category.reason+". "+manual.reason);
+        return category;
     }
     private void check() {
         if (!connected || model == null) return;
@@ -135,29 +170,37 @@ public final class FocusService extends AccessibilityService {
         List<Focus.Slot> schedules=f.meteredSlots(now,now+1,zone);
         for (Focus.Slot s:schedules) next=Math.min(next,s.end);
         boolean interactive = unlocked();
-        enforcing=(!f.apps.isEmpty() || !f.sites.isEmpty())
+        long focusEnd = f.siteModes.usesFocus() ? f.focusForSites(now,zone) : 0;
+        boolean monitorCategories = f.siteModes.active(focusEnd);
+        if (monitorCategories) loadSiteCatalog();
+        if (focusEnd != 0) next = Math.min(next,focusEnd);
+        enforcing=monitorCategories || (!f.apps.isEmpty() || !f.sites.isEmpty())
             && (f.active!=null || !f.limits.configured.isEmpty() || !schedules.isEmpty());
         boolean observing=interactive && enforcing;
-        Visible visible=observing ? foreground(f,!schedules.isEmpty()) : null;
+        Visible visible=observing ? foreground(monitorCategories || f.monitorsSites(!schedules.isEmpty())) : null;
         List<String> targets=visible==null || essential.contains(visible.pkg) ? Collections.emptyList() : f.targets(visible.pkg,visible.host());
+        Limits.Block category = monitorCategories && visible!=null ? categoryBlock(visible.host(),f,focusEnd) : null;
+        List<String> billable = category==null ? targets : Collections.emptyList();
         if (interactive) {
             // Window events carry the monotonic time of the switch, even when Android batches them.
-            long lag = !targets.equals(lastTargets) && transitionAt > 0 ? Math.max(0, awake - transitionAt) : 0;
+            long lag = !billable.equals(lastTargets) && transitionAt > 0 ? Math.max(0, awake - transitionAt) : 0;
             settle(now - lag,awake - lag,zone);
         } else tracker.clear();
-        lastTargets = targets;
+        lastTargets = billable;
         watchBar(visible != null && visible.readBar);
         boolean tracking = false;
         Limits.Window w=Limits.Window.at(now,zone);
         if (notice!=null) {
             List<String> shown=f.targets(noticeSite?null:noticeTarget,noticeSite?noticeTarget:null);
             Limits.Block current=observing?f.restriction(shown,w):null;
+            if (noticeSite && observing && monitorCategories)
+                current=siteBlock(current,categoryBlock(noticeTarget,f,focusEnd));
             if (current==null) hideNotice();
             else if (current.end!=noticeBlock.end || !current.reason.equals(noticeBlock.reason)) {
                 noticeBlock=current; drawNotice();
             }
         }
-        if (visible == null || targets.isEmpty()) {
+        if (visible == null || targets.isEmpty() && category == null) {
             hideCover();
             if (!observing || visible!=null) ejected="";
             if (visible!=null && !launchers.contains(visible.pkg)) hideNotice();
@@ -165,7 +208,7 @@ public final class FocusService extends AccessibilityService {
         } else {
             List<String> app = f.apps.contains(visible.pkg) ? Collections.singletonList(Limits.app(visible.pkg)) : Collections.emptyList();
             Limits.Block appBlock = f.restriction(app,w);
-            Limits.Block block = f.restriction(targets,w);
+            Limits.Block block = siteBlock(f.restriction(targets,w),category);
             if (appBlock != null) {
                 hideCover();
                 returnHome(visible.pkg,appBlock,false);
@@ -182,9 +225,10 @@ public final class FocusService extends AccessibilityService {
             } else {
                 hideCover(); hideNotice(); ejected="";
                 List<Limits.Quota> rules=Limits.at(f.limits.forTargets(targets),schedules,now);
-                if (!rules.isEmpty() && f.active == null) {
-                    Focus.Slot immediate=f.next(now,zone,true);
-                    tracker.watch(f,targets,now,awake,zone,immediate==null?Long.MAX_VALUE:immediate.start);
+                boolean classifying = monitorCategories && loadingCatalog && visible.host()!=null;
+                if (!rules.isEmpty() && f.active == null && !classifying) {
+                    Focus.Slot nextFocus = f.siteModes.usesFocus() ? upcoming : f.next(now,zone,true);
+                    tracker.watch(f,targets,now,awake,zone,nextFocus==null?Long.MAX_VALUE:nextFocus.start);
                     tracking = true;
                     long delay = Math.min(Limits.Tracker.CHECKPOINT,Limits.remaining(rules,w));
                     next = Math.min(next,Math.min(now + delay,Math.min(w.hourEnd,w.dayEnd)));
@@ -232,7 +276,8 @@ public final class FocusService extends AccessibilityService {
         TextView heading=Ui.text(themed,title,21,text_primary,true); heading.setAccessibilityHeading(true);
         Ui.put(content,heading,0);
         Ui.put(content,Ui.text(themed,noticeName,18,text_primary,true),5);
-        String detail=noticeBlock.reason+". Liberação às "+releaseTime(noticeBlock.end)+".";
+        String detail=noticeBlock.reason+".";
+        if (noticeBlock.end!=Long.MAX_VALUE) detail+=" Liberação às "+releaseTime(noticeBlock.end)+".";
         Ui.put(content,Ui.text(themed,detail,16,text_muted,false),6);
         Ui.put(content,Ui.button(themed,"Entendi",on_focus_action,focus_action,()->{hideNotice(); ejected=""; queueCheck();}),10);
         int width=Math.min(Ui.dp(this,408),getResources().getDisplayMetrics().widthPixels-Ui.dp(this,24));
@@ -264,13 +309,13 @@ public final class FocusService extends AccessibilityService {
         }
         String host() { return address == null ? null : address.host; }
     }
-    private Visible foreground(Focus f,boolean meteredSchedule) {
+    private Visible foreground(boolean monitorSites) {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return null;
         try {
             String pkg = String.valueOf(root.getPackageName());
             if (essential.contains(pkg)) return new Visible(pkg,false,null,null);
-            boolean readBar = browser(pkg) && f.monitorsSites(meteredSchedule);
+            boolean readBar = browser(pkg) && monitorSites;
             Address address = readBar ? address(root,pkg) : null;
             Rect area = null;
             if (address != null) {
@@ -323,7 +368,8 @@ public final class FocusService extends AccessibilityService {
         sheet.addView(content);
         TextView brand = Ui.text(themed,"Pulso",17,accent,true); brand.setGravity(Gravity.CENTER); Ui.put(content,brand,0);
         TextView title = Ui.text(themed,"Site em pausa",32,text_primary,true); title.setGravity(Gravity.CENTER); Ui.put(content,title,12);
-        TextView detail=Ui.text(themed,block.reason+". "+host+" fica em pausa até "+releaseTime(block.end)+". Use a barra de endereço para abrir outro site.",16,text_muted,false);
+        String pause = block.end==Long.MAX_VALUE ? " está em pausa." : " fica em pausa até "+releaseTime(block.end)+".";
+        TextView detail=Ui.text(themed,block.reason+". "+host+pause+" Use a barra de endereço para abrir outro site.",16,text_muted,false);
         detail.setGravity(Gravity.CENTER); Ui.put(content,detail,10);
         Ui.put(content,Ui.button(themed,"Voltar uma página",on_focus_action,focus_action,()->{ hideCover(); performGlobalAction(GLOBAL_ACTION_BACK); queueCheck(); }),20);
         Ui.put(content,Ui.button(themed,"Tela inicial",accent,accent_surface,()->{ hideCover(); performGlobalAction(GLOBAL_ACTION_HOME); }),8);

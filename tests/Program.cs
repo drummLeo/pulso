@@ -155,6 +155,7 @@ static int RunChecks()
         Check(legacy.Minutes == 35 && legacy.Sites.SequenceEqual(["video.test"]) && legacy.Apps.SequenceEqual(["Jogo"])
             && !legacy.Usage.Shared.Enabled && legacy.Usage.Items.Count == 0, "Perfil da versão 1 preserva a lista e começa com os limites desativados");
         ScheduledUsageChecks.Run(Check, folder);
+        SiteFilterChecks.Run(Check, folder);
     }
     finally
     {

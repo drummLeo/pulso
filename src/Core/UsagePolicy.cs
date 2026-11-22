@@ -12,6 +12,7 @@ internal sealed class UsagePolicy
     public WindowOfFocus[] ActiveQuotas { get; }
     public UsageBlock? Focus { get; }
     public UsageBlock? Shared { get; }
+    public SiteFilterPolicy Filters { get; }
 
     public UsagePolicy(FocusData data, DateTimeOffset now, TimeZoneInfo zone)
     {
@@ -22,11 +23,13 @@ internal sealed class UsagePolicy
         if (data.Usage.Shared.BlockedUntil(data.Usage, Period) is { } until)
             Shared = new(UsageBlockKind.Shared, "Limite compartilhado", until);
         var quotas = new List<WindowOfFocus>();
+        DateTimeOffset? quotaEnd = null;
         foreach (var window in FocusClock.Nearby(data, now, zone).Where(w => w.Start <= now && now < w.End))
         {
             if (window.Routine.HourMinutes.HasValue)
             {
                 quotas.Add(window);
+                quotaEnd = UsageClock.Later(quotaEnd, window.End);
                 if (ScheduleEnd(window) is { } end)
                     listLimit = Longest(listLimit, new(UsageBlockKind.Schedule, window.Routine.Name, end));
             }
@@ -34,6 +37,7 @@ internal sealed class UsagePolicy
                 Focus = Longest(Focus, new(UsageBlockKind.Focus, window.Routine.Name, window.End));
         }
         ActiveQuotas = quotas.ToArray();
+        Filters = SiteFilterPolicy.At(data, UsageClock.Later(Focus?.Until, quotaEnd));
         listLimit = Longest(listLimit, Shared);
     }
 

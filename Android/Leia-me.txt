@@ -1,4 +1,4 @@
-Pulso 1.4 para Android
+Pulso 1.5 para Android
 
 Abra o Pulso. Em Lista, escolha os aplicativos e adicione os domínios que deseja pausar. Em Foco, selecione uma duração e toque em Iniciar sessão.
 
@@ -9,6 +9,11 @@ Marque um app individualmente ou use Marcar no cabeçalho de uma categoria. Dura
 
 Aparência
 Toque em Tema no alto de qualquer aba e escolha Sistema, Claro ou Escuro. Sistema acompanha o modo claro ou escuro da One UI. A escolha fica salva no celular e vale também para os diálogos e a tela de site em pausa.
+
+Filtros de pornografia e apostas
+Em Lista, procure Sites. Se você tiver muitos apps selecionados, toque em Ir para sites para chegar direto ao cartão. Escolha um modo para Pornografia e outro para Apostas. Desativado mantém a categoria desligada. Durante o foco aplica o filtro durante sessões rápidas e agendamentos ativos, inclusive os com saldo por hora. Sempre mantém a categoria bloqueada também fora desses horários enquanto o serviço de Acessibilidade do Pulso estiver ativo. As duas começam desativadas.
+
+No Chrome, no Edge e no Samsung Internet, a proteção usa o domínio que aparece na barra de endereço. As listas de domínios e subdomínios vêm no APK. O filtro de apostas inclui os sites .bet.br. Quando uma categoria bloqueia a página, o aviso identifica qual foi e a barra fica disponível para abrir outro endereço.
 
 Ativar o bloqueio
 Toque em Configurar acessibilidade e depois em Abrir Acessibilidade. Na One UI, procure Aplicativos instalados, selecione Pulso • Bloqueio de foco e habilite o serviço. Você pode desligá-lo no mesmo menu. O cronômetro também pode ser usado sozinho.

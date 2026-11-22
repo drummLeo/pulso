@@ -40,6 +40,7 @@ internal static class AppPickerChecks
                 await Until(() => app.MainWindow?.IsLoaded == true);
                 app.MainWindow.Hide();
                 await Exercise(app, profile.FullName);
+                await SiteFilterUiChecks.Run(Path.Combine(profile.FullName, "filtros"));
             }, DispatcherPriority.ApplicationIdle).Task.Unwrap();
             var frame = new DispatcherFrame();
             _ = checks.ContinueWith(_ => app.Dispatcher.BeginInvoke(() => frame.Continue = false), TaskScheduler.Default);
