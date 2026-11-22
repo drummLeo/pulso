@@ -1,0 +1,29 @@
+Pulso para Windows
+
+Procure Pulso - Foco no PC no menu Iniciar ou use o atalho Abrir Pulso nesta pasta. Em Lista de bloqueio, adicione os programas e os domínios que deseja colocar em pausa. Em Visão geral, escolha a duração e clique em Iniciar sessão. Se a lista estiver vazia, você pode usar o cronômetro sozinho.
+
+A cópia em Aplicativo\Pulso.exe também pode ser aberta diretamente neste PC.
+
+Limites de uso
+Em Lista de bloqueio, clique em Configurar limite ao lado de um aplicativo ou site para dar a ele um tempo próprio. No cartão Limite compartilhado, o mesmo botão cria um saldo para a lista inteira. Você pode usar uma das opções ou as duas juntas. Por exemplo, com 30 minutos por dia para a lista e 10 minutos por hora para um site, usar o site por 10 minutos desconta 10 do saldo diário e pausa o site até a próxima hora. Os outros itens ainda podem usar os 20 minutos do dia.
+
+Preencha os minutos por hora (1 a 60), por dia (1 a 1440) ou os dois campos. O saldo da hora se renova na próxima hora cheia do relógio do Windows e o do dia, à meia-noite local. Quando houver mais de uma restrição, o item volta a ficar disponível ao terminar a última. Os limites funcionam enquanto o Pulso estiver aberto, inclusive na área de notificação, independentemente das sessões de foco.
+
+A lista mostra o tempo usado e o limite de cada período. Editar um valor mantém o consumo já registrado. Deixar um campo vazio desativa e zera apenas aquele período. Desativar um limite zera os dois períodos dele. Ao remover um item, o saldo compartilhado já utilizado pelos itens da lista é preservado.
+
+O Pulso conta a janela em primeiro plano enquanto a tela está ligada e a sessão do Windows está desbloqueada. No navegador, conta a aba em primeiro plano nos perfis com a extensão conectada. Se o navegador e o site estiverem na lista, esse intervalo conta uma única vez para o saldo compartilhado. O tempo em segundo plano, em pausa, com o PC suspenso ou com o Pulso encerrado fica fora da contagem.
+
+Aplicativos
+Escolha uma janela aberta ou o arquivo .exe do programa. Durante a sessão ou depois de atingir um limite, o Pulso minimiza as janelas desse aplicativo quando aparecem. O programa continua em execução e o trabalho aberto fica disponível ao final da pausa.
+
+Sites no Chrome e no Edge
+Abra Navegadores e clique em Copiar caminho da extensão. Abra o gerenciador do Chrome ou do Edge pelos botões da tela. Ative o Modo do desenvolvedor, escolha Carregar sem compactação ou Carregar sem pacote e cole o caminho da pasta. Volte ao Pulso para conferir a conexão. Repita nos perfis que deseja usar. Janelas anônimas ou InPrivate exigem habilitar a extensão também nesse modo.
+
+Se já usava a extensão, abra o Pulso atualizado e clique em Recarregar no cartão do Pulso em chrome://extensions ou edge://extensions para habilitar a medição. Um domínio na lista inclui seus subdomínios. Durante a sessão ou ao atingir um limite, as abas desses sites mostram uma página de pausa. Ao final, use Voltar ou abra o endereço novamente.
+
+Agendamentos e histórico
+Em Agendamentos, escolha os dias, a hora local e a duração. Uma sessão agendada começa enquanto o Pulso está em execução. Ao abrir o app no meio de um intervalo agendado, a sessão usa o tempo restante.
+
+Fechar a janela deixa o Pulso na área de notificação do Windows. Dê dois cliques no ícone para reabrir. Para encerrar o aplicativo, use Sair do Pulso no menu do ícone. Após reiniciar o PC, abra o Pulso novamente para retomar os agendamentos e os limites de uso.
+
+Os dados e a extensão ficam em %LOCALAPPDATA%\PulsoFoco. O histórico registra a duração das sessões. Os contadores guardam o uso acumulado na hora e no dia atuais. A extensão se comunica com o aplicativo somente neste PC.

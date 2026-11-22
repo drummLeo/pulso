@@ -1,0 +1,8 @@
+bin/
+obj/
+__pycache__/
+*.lnk
+premium-audit.json
+*.p12
+*.jks
+*.keystore

@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Pulso</AssemblyName>
+    <Version>1.1.0</Version>
+    <Product>Pulso</Product>
+    <Description>Sessões de foco e bloqueio de distrações no Windows</Description>
+    <ApplicationIcon>pulso.ico</ApplicationIcon>
+    <DebugType>embedded</DebugType>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableSingleFileAnalyzer>false</EnableSingleFileAnalyzer>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <EmbeddedResource Include="Browser/*" LogicalName="Pulso.Extension.%(Filename)%(Extension)" />
+    <Resource Include="pulso.ico" />
+    <Resource Include="Browser/pulso.png" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,13 @@
+:root { color-scheme: light; font: 17px/1.55 Inter, "Segoe UI", sans-serif; color: #202641; background: #eff1fa; }
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; }
+main { width: min(88vw, 42rem); padding: 3rem 0; }
+.brand { display: flex; align-items: center; gap: .6rem; font-size: 1.25rem; font-weight: 650; }
+h1 { font: 600 clamp(2.3rem, 6vw, 4rem)/1.08 Bahnschrift, "Segoe UI", sans-serif; margin: 2.4rem 0 .8rem; }
+p { color: #4d5471; }
+button { background: #414caa; color: white; border: 0; padding: .7rem 1.5rem; font: inherit; font-weight: 600; border-radius: .55rem; cursor: pointer; }
+button:hover { background: #363f91; }
+button:focus-visible { outline: 3px solid #24306d; outline-offset: 4px; }
+.popup { min-height: auto; width: 285px; display: block; background: #f7f8fc; }
+.popup main { width: 100%; padding: 1.2rem; }
+.popup p { font-size: 15px; margin-bottom: 0; }
