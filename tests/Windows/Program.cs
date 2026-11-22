@@ -6,6 +6,8 @@ internal static class Program
     [STAThread]
     static int Main(string[] args)
     {
+        if (args is ["tema"]) return ThemeChecks.Run();
+        if (args is ["tema", var imageFolder]) return ThemeChecks.Run(imageFolder);
         if (args is ["interface", var executable, var preview]) return DesktopFlow.Run(executable, preview);
         if (args is ["limite", var program]) return DesktopFlow.CheckQuota(program);
         if (args is ["janela"])
@@ -25,6 +27,7 @@ internal static class Program
         await bridge.StartAsync();
         if (bridge.Error != null) throw new InvalidOperationException(bridge.Error);
         Console.WriteLine(extension);
+        var data = new FocusData();
         string? command;
         while ((command = Console.ReadLine()) != null && command != "sair")
         {
@@ -33,11 +36,16 @@ internal static class Program
             {
                 case "iniciar":
                 case "expirar":
-                    bridge.Update(new FocusData { Sites = ["pulso.test"], Active = new("Teste", now,
-                        now.AddSeconds(command == "expirar" ? 3 : 120), false) });
+                    data = data with { Sites = ["pulso.test"], Active = new("Teste", now,
+                        now.AddSeconds(command == "expirar" ? 3 : 120), false) };
+                    bridge.Update(data);
                     Console.WriteLine("ok"); break;
                 case "parar":
-                    bridge.Update(new()); Console.WriteLine("ok"); break;
+                    data = data with { Active = null };
+                    bridge.Update(data); Console.WriteLine("ok"); break;
+                case "tema system" or "tema light" or "tema dark":
+                    data = data with { Theme = command[5..] };
+                    bridge.Update(data); Console.WriteLine("ok"); break;
                 case "estado": Console.WriteLine(bridge.Connected); break;
                 case "aba": Console.WriteLine(bridge.ForegroundSite("chrome") ?? bridge.ForegroundSite("msedge") ?? "-"); break;
                 case "medir":

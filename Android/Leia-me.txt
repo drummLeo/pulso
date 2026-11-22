@@ -1,6 +1,9 @@
-Pulso 1.1 para Android
+Pulso 1.2 para Android
 
 Abra o Pulso. Em Lista, escolha os aplicativos e adicione os domínios que deseja pausar. Em Foco, selecione uma duração e toque em Iniciar sessão.
+
+Aparência
+Toque em Tema no alto de qualquer aba e escolha Sistema, Claro ou Escuro. Sistema acompanha o modo claro ou escuro da One UI. A escolha fica salva no celular e vale também para os diálogos e a tela de site em pausa.
 
 Ativar o bloqueio
 Toque em Configurar acessibilidade e depois em Abrir Acessibilidade. Na One UI, procure Aplicativos instalados, selecione Pulso • Bloqueio de foco e habilite o serviço. Você pode desligá-lo no mesmo menu. O cronômetro também pode ser usado sozinho.
@@ -23,4 +26,4 @@ Em Agenda, defina o nome, o horário local, a duração e os dias da semana. Com
 
 Os dados desta edição ficam no celular. O APK dispensa permissão de internet. As listas e o histórico do Android são independentes dos dados do Pulso para Windows.
 
-O arquivo Pulso-Galaxy.apk é a cópia para reinstalação. Em um PC com o SDK do Android instalado, o comando adb -d install -r Pulso-Galaxy.apk atualiza o aplicativo pelo cabo USB autorizado. Ao atualizar a versão 1.0 com a mesma assinatura, as listas, a agenda e o histórico são preservados. Os limites começam desativados.
+O arquivo Pulso-Galaxy.apk é a cópia para reinstalação. Em um PC com o SDK do Android instalado, o comando adb -d install -r Pulso-Galaxy.apk atualiza o aplicativo pelo cabo USB autorizado. O uso da mesma assinatura preserva os dados locais. Quem atualiza da versão 1.1 mantém suas listas, agenda, histórico e limites e começa com o tema Sistema.

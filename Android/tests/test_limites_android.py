@@ -77,7 +77,7 @@ def check_upgrade(p):
     p.tap("Lista")
     p.check_visible("Chrome")
     p.check_visible(SITE)
-    print("OK  Dados criados na 1.0 continuam visíveis nas respectivas telas da 1.1", flush=True)
+    print("OK  Dados criados na 1.0 continuam visíveis nas respectivas telas da versão atual", flush=True)
 
 
 @contextmanager
@@ -328,5 +328,5 @@ if __name__ == "__main__":
     if args.preparar_v1:
         prepare_legacy(phone, args.preparar_v1, args.artifacts)
     else:
-        install(phone, Path(__file__).resolve().parents[1] / "Pulso-Galaxy.apk", "1.1")
+        install(phone, Path(__file__).resolve().parents[1] / "Pulso-Galaxy.apk", "1.2")
         run_limits(phone, args.artifacts, args.verificar_atualizacao)

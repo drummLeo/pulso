@@ -34,7 +34,7 @@ public partial class MainWindow
         var shared = Ui.Section(ContentPage, "Limite compartilhado", "Todos os itens usam o mesmo saldo. Os limites valem também fora das sessões de foco.");
         AddUsageRow(shared, null, null, null);
         var sites = Ui.Section(ContentPage, "Sites", "Adicione um domínio ou cole um link. Os subdomínios também entram na lista.");
-        var input = new TextBox { MaxLength = 2048 };
+        var input = Ui.TextInput("", 2048);
         siteInput = input;
         sites.Children.Add(Ui.Label("Endereço do site", input));
         var inputRow = new DockPanel();
@@ -251,7 +251,11 @@ public partial class MainWindow
         var checks = new Dictionary<DayOfWeek, CheckBox>();
         foreach (var (day, shortName) in Week)
         {
-            var check = new CheckBox { Content = shortName, IsChecked = (initial.Days & (1 << (int)day)) != 0 };
+            var check = new CheckBox
+            {
+                Content = shortName, IsChecked = (initial.Days & (1 << (int)day)) != 0, MinWidth = 0,
+                VerticalContentAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 3, 9, 3)
+            };
             AutomationProperties.SetName(check, Pt.DateTimeFormat.GetDayName(day));
             checks[day] = check; daysRow.Children.Add(check);
         }

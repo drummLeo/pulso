@@ -1,13 +1,24 @@
-:root { color-scheme: light; font: 17px/1.55 Inter, "Segoe UI", sans-serif; color: #202641; background: #eff1fa; }
+:root {
+  color-scheme: light;
+  --canvas: #eff1fa; --panel: #f7f8fc; --ink: #202641; --muted: #4d5471;
+  --action: #414caa; --on-action: #fff; --hover: #363f91; --focus: #24306d;
+  font: 17px/1.55 Inter, "Segoe UI", sans-serif;
+  color: var(--ink); background: var(--canvas);
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --canvas: #161a25; --panel: #202636; --ink: #eef1f8; --muted: #b8c1d7;
+  --action: #bbc5ff; --on-action: #22294b; --hover: #d6dcff; --focus: #d6dcff;
+}
 * { box-sizing: border-box; }
 body { margin: 0; min-height: 100vh; display: grid; place-items: center; }
 main { width: min(88vw, 42rem); padding: 3rem 0; }
 .brand { display: flex; align-items: center; gap: .6rem; font-size: 1.25rem; font-weight: 650; }
 h1 { font: 600 clamp(2.3rem, 6vw, 4rem)/1.08 Bahnschrift, "Segoe UI", sans-serif; margin: 2.4rem 0 .8rem; }
-p { color: #4d5471; }
-button { background: #414caa; color: white; border: 0; padding: .7rem 1.5rem; font: inherit; font-weight: 600; border-radius: .55rem; cursor: pointer; }
-button:hover { background: #363f91; }
-button:focus-visible { outline: 3px solid #24306d; outline-offset: 4px; }
-.popup { min-height: auto; width: 285px; display: block; background: #f7f8fc; }
+p { color: var(--muted); }
+button { background: var(--action); color: var(--on-action); border: 0; padding: .7rem 1.5rem; font: inherit; font-weight: 600; border-radius: .55rem; cursor: pointer; }
+button:hover { background: var(--hover); }
+button:focus-visible { outline: 3px solid var(--focus); outline-offset: 4px; }
+.popup { min-height: auto; width: 285px; display: block; background: var(--panel); }
 .popup main { width: 100%; padding: 1.2rem; }
 .popup p { font-size: 15px; margin-bottom: 0; }

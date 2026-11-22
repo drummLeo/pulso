@@ -36,6 +36,22 @@ def wait_for(check, label, page, timeout=12):
     raise AssertionError(label)
 
 
+def readable_theme(page, mode):
+    return page.evaluate("""mode => {
+        const css = el => getComputedStyle(el);
+        function luminance(color) {
+            const rgb = color.match(/[\\d.]+/g).slice(0, 3).map(n => Number(n) / 255)
+                .map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4);
+            return .2126 * rgb[0] + .7152 * rgb[1] + .0722 * rgb[2];
+        }
+        const root = document.documentElement;
+        const surface = document.body.classList.contains('popup') ? document.body : root;
+        const bg = luminance(css(surface).backgroundColor), fg = luminance(css(document.querySelector('p')).color);
+        return css(root).colorScheme === mode && (mode === 'dark' ? bg < .2 : bg > .7)
+            && (Math.max(bg,fg)+.05) / (Math.min(bg,fg)+.05) >= 4.5;
+    }""", mode)
+
+
 def run(fixture, executable, load_via_protocol=False):
     with tempfile.TemporaryDirectory(prefix="pulso-chromium-") as root, contextlib.ExitStack() as cleanup:
         # No redirects, extensions, data or websites from the user's browser profile are used.
@@ -76,12 +92,31 @@ def run(fixture, executable, load_via_protocol=False):
                         wait_for(lambda: command("estado") in {"Chrome", "Edge"}, "Extensão empacotada conectou ao Pulso", page)
                         print("Navegador:", command("estado"), flush=True)
                         assert page.title() == "Pagina local"
+                        popup = ctx.new_page()
+                        popup.emulate_media(color_scheme="dark")
+                        popup.goto(ctx.service_workers[0].url.rsplit("/", 1)[0] + "/status.html")
+                        wait_for(lambda: readable_theme(popup, "dark"), "Tema Sistema segue o navegador escuro no painel da extensão", popup)
+                        popup.emulate_media(color_scheme="light")
+                        wait_for(lambda: readable_theme(popup, "light"), "Painel aberto acompanha mudança do sistema para Claro", popup)
+                        popup.emulate_media(color_scheme="dark")
+                        wait_for(lambda: readable_theme(popup, "dark"), "Painel aberto acompanha mudança do sistema para Escuro", popup)
+                        assert command("tema light") == "ok"
+                        wait_for(lambda: readable_theme(popup, "light"), "Tema Claro do PC prevalece no painel já aberto", popup)
+                        page.emulate_media(color_scheme="light")
+                        assert command("tema dark") == "ok"
+                        wait_for(lambda: readable_theme(popup, "dark"), "Painel acompanha a troca para Escuro", popup)
+                        popup.close()
+                        page.bring_to_front()
                         unauthorized = ctx.request.get(f"http://127.0.0.1:{local_port}/foco")
                         assert unauthorized.status == 403
                         unauthorized.dispose()
                         print("OK  Acesso HTTP comum não recebe a lista de foco", flush=True)
                         command("iniciar")
                         wait_for(lambda: page.url.startswith("chrome-extension:") and page.title().startswith("Site em pausa"), "Aba já aberta entra em pausa", page)
+                        wait_for(lambda: readable_theme(page, "dark"), "Tela de pausa usa o tema Escuro do PC", page)
+                        assert command("tema system") == "ok"
+                        wait_for(lambda: readable_theme(page, "light"), "Trocar o tema mantém a pausa ativa", page)
+                        assert page.locator("h1").inner_text() == "Este site está em pausa."
                         tab = ctx.new_page()
                         tab.goto(f"http://pulso.test:{port}/nova")
                         assert urlsplit(tab.url).path == "/pausa.html", tab.url
@@ -123,8 +158,12 @@ def run(fixture, executable, load_via_protocol=False):
                         assert tab.title() == "Pagina local"
                         command("iniciar")
                         wait_for(lambda: urlsplit(tab.url).path == "/pausa.html", "Regra reaplicada", tab)
+                        assert command("tema dark") == "ok"
+                        wait_for(lambda: readable_theme(tab, "dark"), "Tema Escuro está salvo na extensão", tab)
                         stop()
                         wait_for(lambda: tab.locator("h1").inner_text() == "A pausa terminou.", "Fechar o aplicativo libera o navegador", tab)
+                        tab.reload()
+                        wait_for(lambda: readable_theme(tab, "dark"), "Extensão mantém a aparência com o PC desconectado", tab)
                         tab.goto(f"http://pulso.test:{port}/fim")
                         assert tab.title() == "Pagina local"
             finally:

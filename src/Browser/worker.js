@@ -6,6 +6,7 @@ let socket, expiryTimer, reconnectTimer;
 let leaseEnd = 0, focusEnd = 0, revision = -1, sample = 0;
 let focusSites = [], limits = [], watched = [], blocked = [];
 let supportsUsage = false, lastReport = null, signature = null;
+let savedTheme;
 let queue = Promise.resolve();
 
 function ordered(action) {
@@ -111,6 +112,13 @@ async function acceptPolicy(policy) {
   await refreshRules();
   if (supportsUsage) await reportForeground(true);
   else if (socket?.readyState === WebSocket.OPEN) socket.send("ok:" + revision);
+  const theme = policy.theme === "dark" || policy.theme === "light" ? policy.theme : "system";
+  if (theme !== savedTheme) {
+    try {
+      await chrome.storage.local.set({ theme });
+      savedTheme = theme;
+    } catch { /* A próxima atualização tentará salvar a aparência de novo. */ }
+  }
 }
 
 function connect() {

@@ -7,6 +7,8 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
+import android.content.res.Configuration;
 import android.graphics.PixelFormat;
 import android.graphics.Rect;
 import android.os.Build;
@@ -15,6 +17,7 @@ import android.os.Looper;
 import android.os.PowerManager;
 import android.os.SystemClock;
 import android.view.Gravity;
+import android.view.ContextThemeWrapper;
 import android.view.WindowManager;
 import android.view.accessibility.AccessibilityEvent;
 import android.view.accessibility.AccessibilityNodeInfo;
@@ -28,6 +31,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
+import static br.local.pulso.R.color.*;
 
 public final class FocusService extends AccessibilityService {
     static boolean connected;
@@ -55,6 +59,10 @@ public final class FocusService extends AccessibilityService {
     private PowerManager power;
     private KeyguardManager keyguard;
     private ScrollView cover;
+    private boolean coverDark;
+    private final SharedPreferences.OnSharedPreferenceChangeListener appearanceChanged = (prefs,key)->{
+        if (cover != null) queueCheck();
+    };
     private final Rect covered = new Rect();
     private String showingHost = "", showingReason = "", lastApp = "";
     private long showingEnd, lastHome, lastToast;
@@ -66,6 +74,7 @@ public final class FocusService extends AccessibilityService {
         power = (PowerManager)getSystemService(POWER_SERVICE);
         keyguard = (KeyguardManager)getSystemService(KEYGUARD_SERVICE);
         model.listen(changed);
+        Appearance.preferences(this).registerOnSharedPreferenceChangeListener(appearanceChanged);
         if (!registered) {
             IntentFilter filter = new IntentFilter();
             filter.addAction(Intent.ACTION_SCREEN_OFF); filter.addAction(Intent.ACTION_SCREEN_ON); filter.addAction(Intent.ACTION_TIME_CHANGED);
@@ -245,25 +254,29 @@ public final class FocusService extends AccessibilityService {
         if (Build.VERSION.SDK_INT < 33) node.recycle();
     }
     private void showCover(Rect area,String host,Limits.Block block) {
-        if (cover != null && showingHost.equals(host) && showingEnd==block.end && showingReason.equals(block.reason) && covered.equals(area)) return;
+        Appearance appearance = Appearance.read(this);
+        boolean dark = appearance.isDark(this);
+        if (cover != null && coverDark==dark && showingHost.equals(host) && showingEnd==block.end && showingReason.equals(block.reason) && covered.equals(area)) return;
         hideCover();
-        ScrollView sheet = new ScrollView(this);
-        sheet.setBackgroundColor(Ui.DARK); sheet.setFillViewport(true);
-        LinearLayout content = Ui.col(this); content.setGravity(Gravity.CENTER); Ui.pad(content,24,20,24,20);
+        ContextThemeWrapper themed = new ContextThemeWrapper(this,R.style.PulsoTheme);
+        appearance.applyToContext(themed);
+        ScrollView sheet = new ScrollView(themed);
+        sheet.setBackgroundColor(themed.getColor(page_background)); sheet.setFillViewport(true);
+        LinearLayout content = Ui.col(themed); content.setGravity(Gravity.CENTER); Ui.pad(content,24,20,24,20);
         sheet.addView(content);
-        TextView brand = Ui.text(this,"Pulso",17,Ui.MINT,true); brand.setGravity(Gravity.CENTER); Ui.put(content,brand,0);
-        TextView title = Ui.text(this,"Site em pausa",32,Ui.WHITE,true); title.setGravity(Gravity.CENTER); Ui.put(content,title,12);
-        TextView detail=Ui.text(this,block.reason+". "+host+" fica em pausa até "+releaseTime(block.end)+". Use a barra de endereço para abrir outro site.",16,Ui.LIGHT,false);
+        TextView brand = Ui.text(themed,"Pulso",17,accent,true); brand.setGravity(Gravity.CENTER); Ui.put(content,brand,0);
+        TextView title = Ui.text(themed,"Site em pausa",32,text_primary,true); title.setGravity(Gravity.CENTER); Ui.put(content,title,12);
+        TextView detail=Ui.text(themed,block.reason+". "+host+" fica em pausa até "+releaseTime(block.end)+". Use a barra de endereço para abrir outro site.",16,text_muted,false);
         detail.setGravity(Gravity.CENTER); Ui.put(content,detail,10);
-        Ui.put(content,Ui.button(this,"Voltar uma página",Ui.INK,Ui.MINT,()->{ hideCover(); performGlobalAction(GLOBAL_ACTION_BACK); queueCheck(); }),20);
-        Ui.put(content,Ui.button(this,"Tela inicial",Ui.WHITE,Ui.SLATE,()->{ hideCover(); performGlobalAction(GLOBAL_ACTION_HOME); }),8);
+        Ui.put(content,Ui.button(themed,"Voltar uma página",on_focus_action,focus_action,()->{ hideCover(); performGlobalAction(GLOBAL_ACTION_BACK); queueCheck(); }),20);
+        Ui.put(content,Ui.button(themed,"Tela inicial",accent,accent_surface,()->{ hideCover(); performGlobalAction(GLOBAL_ACTION_HOME); }),8);
         WindowManager.LayoutParams p = new WindowManager.LayoutParams(area.width(),area.height(),
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |
             WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN, PixelFormat.OPAQUE);
         if (Build.VERSION.SDK_INT >= 30) p.setFitInsetsTypes(0);
         p.gravity=Gravity.TOP|Gravity.LEFT; p.x=area.left; p.y=area.top; p.setTitle("Pulso · Site em pausa");
         try {
-            manager.addView(sheet,p); cover=sheet; showingHost=host; showingEnd=block.end; showingReason=block.reason; covered.set(area);
+            manager.addView(sheet,p); cover=sheet; coverDark=dark; showingHost=host; showingEnd=block.end; showingReason=block.reason; covered.set(area);
         } catch (WindowManager.BadTokenException | WindowManager.InvalidDisplayException | SecurityException unavailable) {
             performGlobalAction(GLOBAL_ACTION_HOME);
         }
@@ -284,7 +297,12 @@ public final class FocusService extends AccessibilityService {
         eventAt=0; lastTargets=Collections.emptyList();
         handler.removeCallbacksAndMessages(null); hideCover();
         if(model!=null)model.unlisten(changed);
+        Appearance.preferences(this).unregisterOnSharedPreferenceChangeListener(appearanceChanged);
         if(registered){ unregisterReceiver(clockChanges); registered=false; }
+    }
+    @Override public void onConfigurationChanged(Configuration configuration) {
+        super.onConfigurationChanged(configuration);
+        if (cover != null) queueCheck();
     }
     @Override public void onInterrupt() { tracker.clear(); hideCover(); queueCheck(); }
     @Override public boolean onUnbind(Intent intent) { disconnect(); return super.onUnbind(intent); }

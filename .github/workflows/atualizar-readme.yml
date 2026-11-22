@@ -1,0 +1,42 @@
+name: Atualizar README
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: [README.md]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: atualizar-readme-main
+  cancel-in-progress: false
+
+jobs:
+  documentar:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Obter o histórico do projeto
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Atualizar o resumo e publicar a documentação
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          for tentativa in 1 2 3; do
+            git fetch --no-tags origin refs/heads/main
+            git switch --detach FETCH_HEAD
+            python3 .github/scripts/atualizar_readme.py
+            if git diff --quiet -- README.md; then exit 0; fi
+            git add -- README.md
+            git commit -m 'Atualiza versões e alterações recentes no README'
+            if git push origin HEAD:refs/heads/main; then exit 0; fi
+          done
+          exit 1

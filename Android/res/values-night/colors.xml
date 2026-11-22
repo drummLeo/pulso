@@ -1,0 +1,21 @@
+<resources>
+    <color name="page_background">#161A25</color>
+    <color name="card_surface">#202636</color>
+    <color name="text_primary">#EEF1F8</color>
+    <color name="text_muted">#B8C1D7</color>
+    <color name="outline">#384357</color>
+    <color name="accent">#BBC5FF</color>
+    <color name="accent_surface">#343C59</color>
+    <color name="on_accent">#212947</color>
+    <color name="focus_surface">#29354B</color>
+    <color name="focus_secondary_surface">#40506D</color>
+    <color name="on_focus">#F5F7FF</color>
+    <color name="on_focus_secondary">#D7DFEF</color>
+    <color name="dial_tick">#99A8C1</color>
+    <color name="focus_action">#CBEBAF</color>
+    <color name="on_focus_action">#1B2B1E</color>
+    <color name="focus_choice">#D5DBFF</color>
+    <color name="on_focus_choice">#242D4C</color>
+    <color name="error_text">#FFB2BF</color>
+    <color name="button_ripple">#35BEC8FF</color>
+</resources>

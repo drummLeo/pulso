@@ -4,8 +4,10 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 using Forms = System.Windows.Forms;
 
@@ -40,7 +42,9 @@ public partial class MainWindow : Window
         this.store = store;
         this.bridge = bridge;
         data = store.Load();
+        ((DesktopApp)Application.Current).SetTheme(data.Theme);
         InitializeComponent();
+        MarkThemeChoice();
         var work = SystemParameters.WorkArea;
         Width = Math.Min(Width, work.Width);
         Height = Math.Min(Height, work.Height);
@@ -50,6 +54,7 @@ public partial class MainWindow : Window
         AddNav(NavItems, HistoryId, "\uE81C", "Histórico");
         AddNav(BrowserNav, BrowserId, "\uE774", "Navegadores");
         var menu = new Forms.ContextMenuStrip();
+        TrayMenuColors.ApplyTo(menu);
         menu.Items.Add("Abrir o Pulso", null, (_, _) => Dispatcher.Invoke(Reopen));
         menu.Items.Add("Sair do Pulso", null, (_, _) => Dispatcher.Invoke(Quit));
         using var stream = Application.GetResourceStream(new Uri("pulso.ico", UriKind.Relative))!.Stream;
@@ -91,11 +96,8 @@ public partial class MainWindow : Window
 
     private void AddNav(StackPanel parent, string id, string glyph, string label)
     {
-        var button = Ui.Button(label, () => Navigate(id));
+        var button = Ui.Button(label, () => Navigate(id), "RailButton");
         button.HorizontalAlignment = HorizontalAlignment.Stretch;
-        button.HorizontalContentAlignment = HorizontalAlignment.Left;
-        button.Margin = new Thickness(0, 2, 0, 2);
-        button.Padding = new Thickness(8, 8, 8, 8);
         button.ToolTip = label;
         AutomationProperties.SetName(button, label);
         var content = new StackPanel { Orientation = Orientation.Horizontal, Width = 140 };
@@ -113,11 +115,7 @@ public partial class MainWindow : Window
     private void Navigate(string id)
     {
         page = id;
-        foreach (var (key, item) in nav)
-        {
-            item.Button.Background = Ui.Paint(key == id ? "#415175" : "#232E4D");
-            item.Button.Foreground = Ui.Paint(key == id ? "#FFFFFF" : "#DBDFF1");
-        }
+        foreach (var (key, item) in nav) Selector.SetIsSelected(item.Button, key == id);
         NoticeBox.Visibility = Visibility.Collapsed;
         (PageTitle.Text, PageSubtitle.Text) = id switch
         {
@@ -184,12 +182,47 @@ public partial class MainWindow : Window
         Application.Current.Shutdown();
     }
     private void ResizeShell(object sender, SizeChangedEventArgs e) => Responsive();
+
+    private void OpenThemeMenu(object sender, RoutedEventArgs e)
+    {
+        var menu = ThemeButton.ContextMenu!;
+        menu.PlacementTarget = ThemeButton;
+        menu.IsOpen = true;
+    }
+
+    private void ChooseTheme(object sender, RoutedEventArgs e)
+    {
+        if (e.OriginalSource is not MenuItem { Tag: string choice }) return;
+        if (choice != data.Theme)
+        {
+            var next = data with { Theme = choice };
+            if (WriteState(next))
+            {
+                data = next;
+                ((DesktopApp)Application.Current).SetTheme(choice);
+                bridge.Update(data);
+            }
+        }
+        MarkThemeChoice();
+    }
+
+    private void MarkThemeChoice()
+    {
+        foreach (MenuItem option in ThemeButton.ContextMenu!.Items)
+        {
+            option.IsChecked = Equals(option.Tag, data.Theme);
+            if (option.IsChecked) ThemeButton.ToolTip = "Tema · " + option.Header;
+        }
+    }
+
     private void Responsive()
     {
         if (DialFrame == null || ActualWidth <= 0) return;
         bool compact = ActualWidth < 835;
         RailColumn.Width = new GridLength(compact ? 66 : 196);
         Wordmark.Visibility = RailState.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        ThemeLabel.Visibility = Wordmark.Visibility;
+        ThemeButton.Padding = new Thickness(compact ? 4 : 8, 8, compact ? 4 : 8, 8);
         foreach (var item in nav.Values)
         {
             item.Label.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
@@ -296,8 +329,8 @@ public partial class MainWindow : Window
     private void Notify(string message, bool error = false)
     {
         NoticeText.Text = message;
-        NoticeBox.Background = Ui.Paint(error ? "#FBE8E9" : "#E5EAF9");
-        NoticeText.Foreground = Ui.Paint(error ? "#8E2F3E" : "#2E426B");
+        NoticeBox.SetResourceReference(Border.BackgroundProperty, error ? "ErrorSurface" : "Lilac");
+        NoticeText.SetResourceReference(TextBlock.ForegroundProperty, error ? "ErrorInk" : "Ink");
         NoticeBox.Visibility = Visibility.Visible;
         noticeUntil = DateTimeOffset.Now.AddSeconds(error ? 14 : 5);
     }
@@ -331,8 +364,12 @@ public partial class MainWindow : Window
         if (historyToday != null) historyToday.Text = MinutesText(FocusClock.Today(data, now, Zone));
         var status = active ? "Em foco" : blocked.Count > 0 || pausedSites.Count > 0 ? "Limite atingido" : "Em espera";
         StatusText.Text = status;
-        StatusDot.Fill = Ui.Paint(active ? "#3D835E" : "#71809A");
-        if (tray != null && lastStatus != status) { tray.Text = "Pulso · " + status; lastStatus = status; }
+        if (lastStatus != status)
+        {
+            StatusDot.SetResourceReference(Shape.FillProperty, active ? "StatusActive" : "StatusIdle");
+            if (tray != null) tray.Text = "Pulso · " + status;
+            lastStatus = status;
+        }
         if (page != HomeId) return;
         PageSubtitle.Text = DateLine();
         HeroTitle.Text = active ? s!.Title : "Foco rápido";
@@ -352,8 +389,7 @@ public partial class MainWindow : Window
         {
             bool custom = data.Minutes is not (15 or 25 or 50);
             bool selected = b == PCustom ? custom : (string?)b.Tag == data.Minutes.ToString();
-            b.Background = Ui.Paint(selected ? "#DFE4FC" : "#394763");
-            b.Foreground = Ui.Paint(selected ? "#293458" : "#F0F1FB");
+            Selector.SetIsSelected(b, selected);
             if (b == PCustom) b.Content = custom ? data.Minutes + " min" : "Outro";
         }
         HomeTargets.Text = Count(data.Apps.Length, "app", "apps") + "  ·  " + Count(data.Sites.Length, "site", "sites");

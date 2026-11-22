@@ -1,21 +1,17 @@
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
-using System.Windows.Media;
 
 namespace Pulso;
 
 internal static class Ui
 {
-    private static readonly Dictionary<string, Brush> Colors = new();
-    public static Brush Paint(string color)
-    {
-        if (Colors.TryGetValue(color, out var brush)) return brush;
-        brush = (Brush)new BrushConverter().ConvertFromString(color)!;
-        brush.Freeze();
-        return Colors[color] = brush;
-    }
     public static Style Style(string key) => (Style)Application.Current.FindResource(key);
+    public static TextBox TextInput(string value, int length) => new()
+    {
+        Text = value, MaxLength = length, FontSize = 15, VerticalContentAlignment = VerticalAlignment.Center,
+        MinHeight = 35, Padding = new Thickness(8, 6, 8, 6)
+    };
     public static TextBlock Text(string value, string? style = null, double top = 0)
     {
         var text = new TextBlock { Text = value, Margin = new Thickness(0, top, 0, 0), TextWrapping = TextWrapping.Wrap };
@@ -97,7 +93,7 @@ internal sealed class FormWindow : Window
         DockPanel.SetDock(footer, Dock.Bottom);
         layout.Children.Add(footer);
         error = Ui.Text("", null, 8);
-        error.Foreground = Ui.Paint("#9D3349");
+        error.SetResourceReference(TextBlock.ForegroundProperty, "ErrorInk");
         error.Visibility = Visibility.Collapsed;
         AutomationProperties.SetLiveSetting(error, AutomationLiveSetting.Assertive);
         footer.Children.Add(error);
@@ -112,7 +108,7 @@ internal sealed class FormWindow : Window
     }
     public TextBox Field(string title, string value, int length = 80)
     {
-        var edit = new TextBox { Text = value, MaxLength = length };
+        var edit = Ui.TextInput(value, length);
         Fields.Children.Add(Ui.Label(title, edit));
         Fields.Children.Add(edit);
         return edit;

@@ -1,0 +1,33 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <SolidColorBrush x:Key="Canvas" Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}"/>
+  <SolidColorBrush x:Key="Surface" Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}"/>
+  <SolidColorBrush x:Key="Ink" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+  <SolidColorBrush x:Key="Muted" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+  <SolidColorBrush x:Key="Line" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+  <SolidColorBrush x:Key="Accent" Color="{DynamicResource {x:Static SystemColors.ControlTextColorKey}}"/>
+  <SolidColorBrush x:Key="AccentFill" Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}"/>
+  <SolidColorBrush x:Key="OnAccent" Color="{DynamicResource {x:Static SystemColors.HighlightTextColorKey}}"/>
+  <SolidColorBrush x:Key="Lilac" Color="{DynamicResource {x:Static SystemColors.ControlColorKey}}"/>
+  <SolidColorBrush x:Key="Mint" Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}"/>
+  <SolidColorBrush x:Key="OnMint" Color="{DynamicResource {x:Static SystemColors.HighlightTextColorKey}}"/>
+  <SolidColorBrush x:Key="Rail" Color="{DynamicResource {x:Static SystemColors.ControlColorKey}}"/>
+  <SolidColorBrush x:Key="RailText" Color="{DynamicResource {x:Static SystemColors.ControlTextColorKey}}"/>
+  <SolidColorBrush x:Key="RailLine" Color="{DynamicResource {x:Static SystemColors.ControlTextColorKey}}"/>
+  <SolidColorBrush x:Key="RailSelected" Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}"/>
+  <SolidColorBrush x:Key="RailSelectedText" Color="{DynamicResource {x:Static SystemColors.HighlightTextColorKey}}"/>
+  <SolidColorBrush x:Key="HeroText" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+  <SolidColorBrush x:Key="HeroMuted" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+  <SolidColorBrush x:Key="HeroChipFill" Color="{DynamicResource {x:Static SystemColors.ControlColorKey}}"/>
+  <SolidColorBrush x:Key="HeroChipText" Color="{DynamicResource {x:Static SystemColors.ControlTextColorKey}}"/>
+  <SolidColorBrush x:Key="SelectedChipFill" Color="{DynamicResource {x:Static SystemColors.HighlightColorKey}}"/>
+  <SolidColorBrush x:Key="SelectedChipText" Color="{DynamicResource {x:Static SystemColors.HighlightTextColorKey}}"/>
+  <SolidColorBrush x:Key="DialTrack" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+  <SolidColorBrush x:Key="StatusIdle" Color="{DynamicResource {x:Static SystemColors.ControlTextColorKey}}"/>
+  <SolidColorBrush x:Key="StatusActive" Color="{DynamicResource {x:Static SystemColors.ControlTextColorKey}}"/>
+  <SolidColorBrush x:Key="ErrorSurface" Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}"/>
+  <SolidColorBrush x:Key="ErrorInk" Color="{DynamicResource {x:Static SystemColors.WindowTextColorKey}}"/>
+  <SolidColorBrush x:Key="HoverTint" Color="Transparent"/>
+  <SolidColorBrush x:Key="PressedTint" Color="Transparent"/>
+  <SolidColorBrush x:Key="ButtonBorder" Color="{DynamicResource {x:Static SystemColors.ControlTextColorKey}}"/>
+  <SolidColorBrush x:Key="HeroBackground" Color="{DynamicResource {x:Static SystemColors.WindowColorKey}}"/>
+</ResourceDictionary>

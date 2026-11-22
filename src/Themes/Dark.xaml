@@ -1,0 +1,36 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <SolidColorBrush x:Key="Canvas" Color="#161A25"/>
+  <SolidColorBrush x:Key="Surface" Color="#202636"/>
+  <SolidColorBrush x:Key="Ink" Color="#EEF1F8"/>
+  <SolidColorBrush x:Key="Muted" Color="#B8C1D7"/>
+  <SolidColorBrush x:Key="Line" Color="#424B62"/>
+  <SolidColorBrush x:Key="Accent" Color="#BBC5FF"/>
+  <SolidColorBrush x:Key="AccentFill" Color="#BBC5FF"/>
+  <SolidColorBrush x:Key="OnAccent" Color="#22294B"/>
+  <SolidColorBrush x:Key="Lilac" Color="#30394F"/>
+  <SolidColorBrush x:Key="Mint" Color="#D4EFC2"/>
+  <SolidColorBrush x:Key="OnMint" Color="#203028"/>
+  <SolidColorBrush x:Key="Rail" Color="#151C2C"/>
+  <SolidColorBrush x:Key="RailText" Color="#CFD6E8"/>
+  <SolidColorBrush x:Key="RailLine" Color="#424C62"/>
+  <SolidColorBrush x:Key="RailSelected" Color="#354264"/>
+  <SolidColorBrush x:Key="RailSelectedText" Color="#F5F6FF"/>
+  <SolidColorBrush x:Key="HeroText" Color="#F4F6FF"/>
+  <SolidColorBrush x:Key="HeroMuted" Color="#C9D1E7"/>
+  <SolidColorBrush x:Key="HeroChipFill" Color="#3A4664"/>
+  <SolidColorBrush x:Key="HeroChipText" Color="#F0F1FB"/>
+  <SolidColorBrush x:Key="SelectedChipFill" Color="#C4CEFF"/>
+  <SolidColorBrush x:Key="SelectedChipText" Color="#22294B"/>
+  <SolidColorBrush x:Key="DialTrack" Color="#8192B0"/>
+  <SolidColorBrush x:Key="StatusIdle" Color="#A4B0C7"/>
+  <SolidColorBrush x:Key="StatusActive" Color="#A5DAAE"/>
+  <SolidColorBrush x:Key="ErrorSurface" Color="#482E39"/>
+  <SolidColorBrush x:Key="ErrorInk" Color="#FFB7C2"/>
+  <SolidColorBrush x:Key="HoverTint" Color="#16FFFFFF"/>
+  <SolidColorBrush x:Key="PressedTint" Color="#27FFFFFF"/>
+  <SolidColorBrush x:Key="ButtonBorder" Color="Transparent"/>
+  <LinearGradientBrush x:Key="HeroBackground" StartPoint="0,1" EndPoint="1,0">
+    <GradientStop Color="#222C42" Offset="0"/>
+    <GradientStop Color="#303D5A" Offset="1"/>
+  </LinearGradientBrush>
+</ResourceDictionary>

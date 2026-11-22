@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Windows;
+using Microsoft.Win32;
 
 namespace Pulso;
 
@@ -25,6 +26,7 @@ public partial class DesktopApp : Application
             singleton = new Mutex(true, key, out owns);
             show = new EventWaitHandle(false, EventResetMode.AutoReset, key + "-abrir");
             if (!owns) { show.Set(); Shutdown(); return; }
+            SystemEvents.UserPreferenceChanged += WindowsPreferencesChanged;
             var window = new MainWindow(new FocusStore(folder), new BrowserLink(folder));
             MainWindow = window;
             listener = ThreadPool.RegisterWaitForSingleObject(show, (_, _) => Dispatcher.BeginInvoke(window.Reopen), null, -1, false);
@@ -39,6 +41,7 @@ public partial class DesktopApp : Application
     }
     protected override void OnExit(ExitEventArgs e)
     {
+        SystemEvents.UserPreferenceChanged -= WindowsPreferencesChanged;
         listener?.Unregister(null);
         show?.Dispose();
         if (owns) singleton?.ReleaseMutex();

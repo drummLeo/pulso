@@ -22,10 +22,10 @@ public sealed class BrowserLink
     private readonly string protocol;
     private sealed record Client(string Browser, bool MeasuresUsage, string? Site, long Seen);
     private sealed record SiteLimit(string Domain, long Until);
-    private sealed record Policy(long Revision, long Until, string[] Sites, string[] Watch, SiteLimit[] Limits);
+    private sealed record Policy(long Revision, long Until, string[] Sites, string[] Watch, SiteLimit[] Limits, string Theme);
     private readonly ConcurrentDictionary<Guid, Client> clients = new();
     private readonly object policyLock = new();
-    private volatile Policy policy = new(0, 0, [], [], []);
+    private volatile Policy policy = new(0, 0, [], [], [], "system");
     private WebApplication? server;
     public string? Error { get; private set; }
     public string? ExtensionWarning { get; private set; }
@@ -92,11 +92,12 @@ public sealed class BrowserLink
     {
         long until = data.Active?.End.ToUnixTimeMilliseconds() ?? 0;
         string[] sites = data.Active == null ? [] : data.Sites;
+        string theme = data.Theme is "light" or "dark" ? data.Theme : "system";
         lock (policyLock)
         {
             var previous = policy;
-            if (previous.Until != until || !previous.Sites.SequenceEqual(sites))
-                policy = previous with { Revision = previous.Revision + 1, Until = until, Sites = sites };
+            if (previous.Until != until || !previous.Sites.SequenceEqual(sites) || previous.Theme != theme)
+                policy = previous with { Revision = previous.Revision + 1, Until = until, Sites = sites, Theme = theme };
         }
     }
 
@@ -207,7 +208,7 @@ public sealed class BrowserLink
                 var current = policy;
                 var payload = JsonSerializer.SerializeToUtf8Bytes(new
                 {
-                    version = 2, revision = current.Revision, until = current.Until, sites = current.Sites,
+                    version = 2, revision = current.Revision, until = current.Until, sites = current.Sites, theme = current.Theme,
                     watch = current.Watch, limits = current.Limits.Select(s => new { domain = s.Domain, until = s.Until })
                 });
                 await socket.SendAsync(new ArraySegment<byte>(payload), WebSocketMessageType.Text, true, token);

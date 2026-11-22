@@ -5,10 +5,17 @@ namespace Pulso;
 
 public sealed class FocusDial : FrameworkElement
 {
-    private static readonly Brush Dim = Make("#627292"), Bright = Make("#DCE3FF"), Needle = Make("#D9F2C6");
-    private static Brush Make(string hex)
+    private static readonly DependencyProperty MinorTick = BrushProperty("MinorTick");
+    private static readonly DependencyProperty MajorTick = BrushProperty("MajorTick");
+    private static readonly DependencyProperty Progress = BrushProperty("Progress");
+    private static DependencyProperty BrushProperty(string name) => DependencyProperty.Register(name, typeof(Brush),
+        typeof(FocusDial), new FrameworkPropertyMetadata(Brushes.Transparent, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public FocusDial()
     {
-        var b = (SolidColorBrush)new BrushConverter().ConvertFromString(hex)!; b.Freeze(); return b;
+        SetResourceReference(MinorTick, "DialTrack");
+        SetResourceReference(MajorTick, "HeroMuted");
+        SetResourceReference(Progress, "Mint");
     }
     private double fraction = -1;
     public void Set(double value)
@@ -23,6 +30,9 @@ public sealed class FocusDial : FrameworkElement
         double radius = Math.Min(ActualWidth, ActualHeight) / 2 - 5;
         if (radius < 10) return;
         var center = new Point(ActualWidth / 2, ActualHeight / 2);
+        var dim = (Brush)GetValue(MinorTick);
+        var bright = (Brush)GetValue(MajorTick);
+        var needle = (Brush)GetValue(Progress);
         Point At(double angle, double r)
         {
             double a = angle * Math.PI / 180;
@@ -33,10 +43,10 @@ public sealed class FocusDial : FrameworkElement
         {
             bool major = i % 5 == 0;
             double angle = 135 + i * 270d / slots;
-            var pen = new Pen(i <= fraction * slots ? Needle : major ? Bright : Dim, major ? 2.6 : 1.35);
+            var pen = new Pen(i <= fraction * slots ? needle : major ? bright : dim, major ? 2.6 : 1.35);
             dc.DrawLine(pen, At(angle, radius - (major ? 14 : 8)), At(angle, radius));
         }
         var marker = At(135 + Math.Clamp(fraction, 0, 1) * 270, radius - 21);
-        dc.DrawEllipse(Needle, null, marker, 3, 3);
+        dc.DrawEllipse(needle, null, marker, 3, 3);
     }
 }

@@ -16,6 +16,7 @@ public sealed record Entry(string Title, DateTimeOffset Start, DateTimeOffset En
 public sealed record WindowOfFocus(Routine Routine, DateOnly Day, DateTimeOffset Start, DateTimeOffset End);
 public sealed record FocusData
 {
+    public string Theme { get; init; } = "system";
     public int Minutes { get; init; } = 25;
     public string[] Apps { get; init; } = [];
     public string[] Sites { get; init; } = [];

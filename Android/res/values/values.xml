@@ -3,12 +3,18 @@
     <string name="service_name">Pulso • Bloqueio de foco</string>
     <string name="service_description">O Pulso identifica o aplicativo em primeiro plano e lê a barra de endereço visível de navegadores compatíveis para contar o tempo dos limites configurados. Durante o foco ou ao esgotar um limite, leva você à tela inicial ao abrir um app em pausa e cobre sites em pausa. O processamento é feito no aparelho. Você pode desligar o serviço nas configurações de Acessibilidade.</string>
     <string name="service_summary">Aplica sessões de foco e limites de uso aos apps e sites da sua lista.</string>
-    <style name="PulsoTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
+    <bool name="light_system_bars">true</bool>
+    <style name="PulsoBase" parent="@android:style/Theme.Material.Light.NoActionBar"/>
+    <style name="PulsoTheme" parent="@style/PulsoBase">
         <item name="android:fontFamily">sans-serif</item>
-        <item name="android:colorAccent">#424EAB</item>
-        <item name="android:windowBackground">#F5F6FA</item>
-        <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:colorAccent">@color/accent</item>
+        <item name="android:colorError">@color/error_text</item>
+        <item name="android:colorBackground">@color/page_background</item>
+        <item name="android:colorBackgroundFloating">@color/card_surface</item>
+        <item name="android:windowBackground">@color/page_background</item>
+        <item name="android:windowSplashScreenBackground">@color/page_background</item>
+        <item name="android:windowLightStatusBar">@bool/light_system_bars</item>
+        <item name="android:windowLightNavigationBar">@bool/light_system_bars</item>
         <item name="android:forceDarkAllowed">false</item>
     </style>
 </resources>

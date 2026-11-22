@@ -4,6 +4,9 @@ Procure Pulso - Foco no PC no menu Iniciar ou use o atalho Abrir Pulso nesta pas
 
 A cópia em Aplicativo\Pulso.exe também pode ser aberta diretamente neste PC.
 
+Aparência
+Na barra lateral, clique em Tema e escolha Sistema, Claro ou Escuro. Sistema acompanha a preferência de aplicativos do Windows. A escolha fica salva neste PC. O painel da extensão e a página de pausa também acompanham o tema. Se você já usa a extensão, recarregue o Pulso em chrome://extensions ou edge://extensions para receber a atualização.
+
 Limites de uso
 Em Lista de bloqueio, clique em Configurar limite ao lado de um aplicativo ou site para dar a ele um tempo próprio. No cartão Limite compartilhado, o mesmo botão cria um saldo para a lista inteira. Você pode usar uma das opções ou as duas juntas. Por exemplo, com 30 minutos por dia para a lista e 10 minutos por hora para um site, usar o site por 10 minutos desconta 10 do saldo diário e pausa o site até a próxima hora. Os outros itens ainda podem usar os 20 minutos do dia.
 

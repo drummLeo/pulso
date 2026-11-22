@@ -1,0 +1,4 @@
+<resources>
+    <bool name="light_system_bars">false</bool>
+    <style name="PulsoBase" parent="@android:style/Theme.Material.NoActionBar"/>
+</resources>

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Pulso • Foco no PC",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "minimum_chrome_version": "120",
   "description": "Coloca sites em pausa durante o foco ou ao atingir seus limites de uso neste PC.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAw521RAb5/0l3aUMCUf6bPOWjfMdFEmcYg3cEuyP38q5oxciWcj4LOrhnKYd5qtjfB8ZtYUI0bak0KfGOVvEPQ0OGlWl1DP+2vhkYLT53q15NE8HmZMPLEzGQyYUC7rWEOQOixT2RjwdbE78HDjdfs3vXFnY2ulhLjM2gvz/ueuJjwLz7xAjkWDK9W4bGccrX2CxnIy4MH1ag6mkqw//UR+DuSot4EZR3zA2/MPzZabCD2/0ze9yiAj3bs7x3uY4xr3wKNLqLKruO1pcVryyDaxw8Ydc8Gn7raf4wutfFljuRu494d+NbZz+kmM03DovX9w2Gms55+L4+VMR/NvgHkQIDAQAB",

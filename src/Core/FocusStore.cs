@@ -26,6 +26,7 @@ public sealed class FocusStore(string folder)
                 recovered = candidate != path;
                 return UsageClock.Reconcile(data with
                 {
+                    Theme = data.Theme is "light" or "dark" ? data.Theme : "system",
                     Minutes = Math.Clamp(data.Minutes, 1, 720),
                     Apps = data.Apps.Select(Targets.App).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase).ToArray(),
                     Sites = data.Sites.Select(Targets.Domain).OfType<string>().Distinct().ToArray()
