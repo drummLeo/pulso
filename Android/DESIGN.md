@@ -8,4 +8,6 @@ O botão Tema fica no cabeçalho das quatro abas. A opção Sistema acompanha a 
 
 Seleção de aplicativos, teclado, seleção de horário e diálogos usam os controles do Android. A tela de configuração apresenta o uso da Acessibilidade antes de abrir as preferências do sistema. A lista, a agenda e o histórico ficam no perfil local do Android.
 
-Na aba Lista, o botão Limite de cada item e o botão Editar limite compartilhado abrem o mesmo formulário nativo com campos de minutos por hora e por dia. O consumo de cada período aparece junto ao item ou ao cartão compartilhado. Quando uma cota se esgota, a tela de bloqueio e o aviso ao sair de um app indicam a causa e o horário de liberação. A edição mantém a posição da lista.
+Na aba Lista, o botão Limite de cada item e o botão Editar limite compartilhado abrem o mesmo formulário nativo com campos de minutos por hora e por dia. O consumo de cada período aparece junto ao item ou ao cartão compartilhado. A edição mantém a posição da lista. Limites por agendamento abre a Agenda, onde cada horário permite escolher entre Bloqueio imediato e Limitar minutos por hora. O campo de minutos só se aplica à segunda escolha.
+
+Ao tentar usar um app em pausa, o aviso mostra o nome do aplicativo, o motivo e o horário de liberação. O botão Entendi dispensa o aviso. Os sites continuam com a página de pausa e acesso à barra de endereço. As duas superfícies seguem o tema do Pulso.

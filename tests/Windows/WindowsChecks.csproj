@@ -9,6 +9,7 @@
     <NuGetAudit>false</NuGetAudit>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../TestProcess.cs" Link="TestProcess.cs" />
     <ProjectReference Include="../../src/Pulso.csproj" />
     <FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" />
   </ItemGroup>

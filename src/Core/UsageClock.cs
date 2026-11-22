@@ -35,11 +35,26 @@ public static class UsageClock
         var items = new Dictionary<string, UsageLimit>();
         foreach (string key in ListKeys(data))
             if (state.Items?.GetValueOrDefault(key)?.Clean() is { Enabled: true } limit) items[key] = limit;
-        return data with { Usage = state with { Shared = state.Shared?.Clean() ?? Off, Items = items } };
+        var scheduleTicks = new Dictionary<Guid, long>();
+        foreach (var routine in data.Routines.Where(r => r.HourMinutes.HasValue))
+        {
+            long used = state.ScheduleTicks?.GetValueOrDefault(routine.Id) ?? 0;
+            if (used > 0) scheduleTicks[routine.Id] = Math.Min(used, TimeSpan.TicksPerHour);
+        }
+        return data with { Usage = state with { Shared = state.Shared?.Clean() ?? Off, Items = items, ScheduleTicks = scheduleTicks } };
     }
 
     public static string[] WatchedSites(FocusData data) =>
-        data.Usage.Shared.Enabled ? data.Sites : data.Sites.Where(d => data.Usage.Items.ContainsKey(SiteKey(d))).ToArray();
+        WatchedSites(data, DateTimeOffset.Now, TimeZoneInfo.Local);
+
+    public static string[] WatchedSites(FocusData data, DateTimeOffset now, TimeZoneInfo zone) =>
+        WatchedSites(data, new UsagePolicy(data, now, zone).ActiveQuotas.Length != 0);
+
+    internal static string[] WatchedSites(FocusData data, bool activeQuota) =>
+        data.Usage.Shared.Enabled || activeQuota ? data.Sites : data.Sites.Where(d => data.Usage.Items.ContainsKey(SiteKey(d))).ToArray();
+
+    internal static bool HasLimits(FocusData data) =>
+        data.Usage.Enabled || data.Routines.Any(r => r.Enabled && r.HourMinutes.HasValue);
 
     private static FocusData Advance(FocusData data, UsagePeriod period)
     {
@@ -51,13 +66,14 @@ public static class UsageClock
             Usage = state with
             {
                 HourStart = period.HourStart, Day = period.Day, Shared = state.Shared.Reset(hour, day),
-                Items = state.Items.ToDictionary(pair => pair.Key, pair => pair.Value.Reset(hour, day))
+                Items = state.Items.ToDictionary(pair => pair.Key, pair => pair.Value.Reset(hour, day)),
+                ScheduleTicks = hour ? new() : state.ScheduleTicks
             }
         };
     }
 
     public static FocusData Advance(FocusData data, DateTimeOffset now, TimeZoneInfo zone) =>
-        data.Usage.Enabled ? Advance(data, UsagePeriod.At(now, zone)) : data;
+        HasLimits(data) ? Advance(data, UsagePeriod.At(now, zone)) : data;
 
     private static IEnumerable<string> SiteDomains(string host)
     {
@@ -79,7 +95,7 @@ public static class UsageClock
     // App and matching site(s) may each have their own allowance, while all share a single debit.
     public static FocusData Accrue(FocusData data, string? processName, string? host, DateTimeOffset from, DateTimeOffset to, TimeZoneInfo zone)
     {
-        if (!data.Usage.Enabled) return data;
+        if (!HasLimits(data)) return data;
         var keys = MatchingKeys(data, processName, host).ToArray();
         if (keys.Length == 0) return Advance(data, to, zone);
         for (var cursor = from; cursor < to;)
@@ -88,28 +104,46 @@ public static class UsageClock
             data = Advance(data, period);
             var end = period.HourEnd < to ? period.HourEnd : to;
             if (period.DayEnd < end) end = period.DayEnd;
+            var quotas = new List<WindowOfFocus>();
+            bool paused = false;
+            foreach (var window in FocusClock.Nearby(data, cursor, zone))
+            {
+                if (!window.Routine.HourMinutes.HasValue && window.Day == window.Routine.LastOccurrence) continue;
+                if (window.Start > cursor)
+                {
+                    if (window.Start < end) end = window.Start;
+                }
+                else if (cursor < window.End)
+                {
+                    if (window.End < end) end = window.End;
+                    if (window.Routine.HourMinutes.HasValue) quotas.Add(window);
+                    else paused = true;
+                }
+            }
             if (data.Active is { } focus)
             {
                 if (cursor >= focus.Start && cursor < focus.End)
                 {
-                    cursor = focus.End < end ? focus.End : end;
-                    continue;
+                    if (focus.End < end) end = focus.End;
+                    paused = true;
                 }
                 if (cursor < focus.Start && focus.Start < end) end = focus.Start;
             }
-            data = Charge(data, keys, (end - cursor).Ticks);
+            if (!paused) data = Charge(data, keys, quotas, (end - cursor).Ticks);
             cursor = end;
         }
         return Advance(data, to, zone);
     }
 
-    private static FocusData Charge(FocusData data, string[] keys, long ticks)
+    private static FocusData Charge(FocusData data, string[] keys, List<WindowOfFocus> quotas, long ticks)
     {
         var state = data.Usage;
         ticks = Math.Min(ticks, state.Shared.AvailableTicks);
         foreach (string key in keys)
             if (state.Items.TryGetValue(key, out var limit)) ticks = Math.Min(ticks, limit.AvailableTicks);
-        if (ticks == 0) return data;
+        foreach (var window in quotas)
+            ticks = Math.Min(ticks, window.Routine.HourMinutes!.Value * TimeSpan.TicksPerMinute - state.ScheduleTicks.GetValueOrDefault(window.Routine.Id));
+        if (ticks <= 0) return data;
         Dictionary<string, UsageLimit>? updated = null;
         foreach (string key in keys)
         {
@@ -117,30 +151,41 @@ public static class UsageClock
             updated ??= new(state.Items);
             updated[key] = limit.Charge(ticks);
         }
-        if (updated == null && !state.Shared.Enabled) return data;
-        return data with { Usage = state with { Shared = state.Shared.Enabled ? state.Shared.Charge(ticks) : state.Shared, Items = updated ?? state.Items } };
+        if (updated == null && !state.Shared.Enabled && quotas.Count == 0) return data;
+        var scheduleTicks = state.ScheduleTicks;
+        if (quotas.Count > 0)
+        {
+            scheduleTicks = new(scheduleTicks);
+            foreach (var window in quotas)
+                scheduleTicks[window.Routine.Id] = scheduleTicks.GetValueOrDefault(window.Routine.Id) + ticks;
+        }
+        return data with { Usage = state with
+        {
+            Shared = state.Shared.Enabled ? state.Shared.Charge(ticks) : state.Shared,
+            Items = updated ?? state.Items, ScheduleTicks = scheduleTicks
+        } };
     }
 
     public static DateTimeOffset? BlockedUntil(FocusData data, string? key, DateTimeOffset now, TimeZoneInfo zone)
     {
-        if (!data.Usage.Enabled) return null;
-        if (key != null)
-        {
-            bool listed = key.StartsWith(SitePrefix, StringComparison.Ordinal)
-                ? SiteDomains(key[SitePrefix.Length..]).Any(domain => data.Sites.Contains(domain, StringComparer.OrdinalIgnoreCase))
-                : data.Apps.Any(name => AppKey(name) == key);
-            if (!listed) return null;
-        }
-        return BlockedUntil(data, key, UsagePeriod.At(now, zone));
+        if (key == null) return data.Usage.Shared.BlockedUntil(data.Usage, UsagePeriod.At(now, zone));
+        return IsListed(data, key) ? new UsagePolicy(data, now, zone).LimitFor(key)?.Until : null;
     }
 
-    internal static DateTimeOffset? BlockedUntil(FocusData data, string? key, UsagePeriod period)
+    public static UsageBlock? BlockFor(FocusData data, string key, DateTimeOffset now, TimeZoneInfo zone) =>
+        IsListed(data, key) ? new UsagePolicy(data, now, zone).BlockFor(key) : null;
+
+    private static bool IsListed(FocusData data, string key) =>
+        key.StartsWith(SitePrefix, StringComparison.Ordinal)
+            ? SiteDomains(key[SitePrefix.Length..]).Any(domain => data.Sites.Contains(domain, StringComparer.OrdinalIgnoreCase))
+            : data.Apps.Any(name => AppKey(name) == key);
+
+    internal static DateTimeOffset? IndividualEnd(FocusData data, string key, UsagePeriod period)
     {
         var state = data.Usage;
-        var end = state.Shared.BlockedUntil(state, period);
-        if (key == null) return end;
         if (!key.StartsWith(SitePrefix, StringComparison.Ordinal))
-            return Later(end, Get(data, key).BlockedUntil(state, period));
+            return Get(data, key).BlockedUntil(state, period);
+        DateTimeOffset? end = null;
         foreach (var domain in SiteDomains(key[SitePrefix.Length..]))
             if (state.Items.TryGetValue(SiteKey(domain), out var limit)) end = Later(end, limit.BlockedUntil(state, period));
         return end;

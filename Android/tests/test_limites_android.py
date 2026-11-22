@@ -9,6 +9,7 @@ import re
 import subprocess
 import threading
 import time
+import xml.etree.ElementTree as ET
 
 from test_android import CHROME, PKG, SERVICE, Page, Phone, test_editor as run_legacy_editor, until
 
@@ -328,5 +329,7 @@ if __name__ == "__main__":
     if args.preparar_v1:
         prepare_legacy(phone, args.preparar_v1, args.artifacts)
     else:
-        install(phone, Path(__file__).resolve().parents[1] / "Pulso-Galaxy.apk", "1.2")
+        android = Path(__file__).resolve().parents[1]
+        version = ET.parse(android / "AndroidManifest.xml").getroot().attrib["{http://schemas.android.com/apk/res/android}versionName"]
+        install(phone, android / "Pulso-Galaxy.apk", version)
         run_limits(phone, args.artifacts, args.verificar_atualizacao)

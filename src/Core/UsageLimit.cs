@@ -45,6 +45,7 @@ public sealed record UsageState
 {
     public UsageLimit Shared { get; init; } = new();
     public Dictionary<string, UsageLimit> Items { get; init; } = new();
+    public Dictionary<Guid, long> ScheduleTicks { get; init; } = new();
     public DateTimeOffset? HourStart { get; init; }
     public DateOnly? Day { get; init; }
     [JsonIgnore] public bool Enabled => Shared.Enabled || Items.Count != 0;

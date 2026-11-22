@@ -84,6 +84,109 @@ public final class FocusTest {
         check(!Limits.valid(61,0) && !Limits.valid(-1,0) && !Limits.valid(0,1441) && Limits.valid(60,1440)
             && Limits.valid(0,0),"Faixas inclusivas de hora e dia e desativação");
     }
+    static void scheduledLimits(ZoneId zone) {
+        Focus f=new Focus();
+        f.apps.add("leitor"); f.apps.add("navegador"); f.sites.add("pagina.test");
+        List<String> reader=f.targets("leitor",null), web=f.targets("navegador","pagina.test");
+        long start=instant("2026-11-24T02:58:00Z"); // segunda às 23:58
+        Focus.Routine first=new Focus.Routine("Leitura",1,23*60+58,5);
+        first.setHourLimit(1);
+        f.routines.add(first);
+        Focus.Routine other=new Focus.Routine("Estudo",1,23*60+59,5);
+        other.setHourLimit(2);
+        f.routines.add(other);
+        check(!f.tick(start,zone) && f.active==null && f.history.isEmpty(),"Rotina por uso abre a janela sem iniciar uma sessão");
+        Limits.Tracker tracker=new Limits.Tracker();
+        long awake=1000;
+        tracker.watch(f,web,start-4000,awake,zone,Long.MAX_VALUE);
+        tracker.finish(start+6000,awake+10000,zone);
+        Limits.Window w=Limits.Window.at(start+6000,zone);
+        check(first.quota.hourUsed(w)==6000 && other.quota.hourUsed(w)==0,
+            "Amostra do navegador e site atravessa o início e debita o saldo da agenda só uma vez");
+        long now=start+6000;
+        for(int i=0;i<9;i++){
+            tracker.watch(f,i%2==0?reader:web,now,awake,zone,Long.MAX_VALUE);
+            tracker.finish(now+6000,awake+6000,zone); now+=6000; awake+=6000;
+        }
+        Limits.Block block=f.restriction(web,Limits.Window.at(now,zone));
+        check(block!=null && block.end==start+120000 && block.reason.contains("Leitura")
+            && f.restriction(reader,Limits.Window.at(now,zone)).end==block.end
+            && f.restriction(f.targets("livre",null),w)==null,
+            "Esgotar o minuto alternando app e site pausa a lista até a hora cheia e identifica a agenda");
+        check(other.quota.hourUsed(Limits.Window.at(now,zone))==0,"Uma agenda que acabou de começar recebe seu próprio saldo");
+        now=start+120000; w=Limits.Window.at(now,zone);
+        check(f.restriction(reader,w)==null && first.quota.hourUsed(w)==0,"Meia-noite renova ambos os saldos dentro da janela de segunda");
+        f.limits.set(Limits.SHARED,0,5);
+        for(int i=0;i<4;i++){
+            tracker.watch(f,web,now,awake,zone,Long.MAX_VALUE);
+            tracker.finish(now+15000,awake+15000,zone); now+=15000; awake+=15000;
+        }
+        block=f.restriction(reader,Limits.Window.at(now,zone));
+        check(block!=null && block.end==start+300000 && other.quota.hourUsed(w)==60000
+            && f.limits.get(Limits.SHARED).dayUsed(w)==60000,
+            "Agendas sobrepostas e cota global acumulam simultaneamente; bloqueio acaba no fim da janela curta");
+        first.setHourLimit(2);
+        check(f.restriction(web,Limits.Window.at(now,zone))==null && first.quota.hourUsed(w)==60000,
+            "Aumentar o limite do agendamento preserva o uso da hora");
+        first.setHourLimit(1); first.enabled=false;
+        check(f.restriction(reader,Limits.Window.at(now,zone))==null,"Desativar a agenda suspende seu bloqueio imediatamente");
+        tracker.watch(f,web,now,awake,zone,Long.MAX_VALUE);
+        tracker.finish(now+10000,awake+10000,zone);
+        check(first.quota.hourUsed(w)==60000 && other.quota.hourUsed(w)==70000,"Agenda desativada não consome, a outra continua contando");
+        first.enabled=true;
+        f.limits.set(Limits.app("leitor"),0,1);
+        Limits.consume(f.limits.forTargets(reader),now,now+60000,zone);
+        check(f.restriction(reader,Limits.Window.at(now,zone)).end==instant("2026-11-25T03:00:00Z"),
+            "Uma restrição diária concorrente libera depois do fim das duas agendas");
+        f.routines.remove(first);
+        check(f.restriction(web,Limits.Window.at(now,zone))==null,"Excluir um agendamento não afeta o saldo de outro");
+        long end=start+360000;
+        tracker.watch(f,web,end-4000,awake,zone,Long.MAX_VALUE);
+        tracker.finish(end+6000,awake+10000,zone);
+        check(other.quota.hourUsed(w)==74000 && f.limits.get(Limits.SHARED).dayUsed(w)==140000
+            && f.restriction(web,Limits.Window.at(end,zone))==null,
+            "Amostra corta a segunda agenda no fim da janela e continua debitando o grupo");
+        tracker.watch(f,web,end+6000,awake,zone,Long.MAX_VALUE);
+        tracker.finish(end+9000,awake+3000,zone);
+        check(other.quota.hourUsed(w)==74000,"Abrir um alvo fora da janela não usa o saldo agendado");
+    }
+    static void overlappingRestrictions(ZoneId zone) {
+        Focus f=new Focus(); f.apps.add("leitor");
+        List<String> target=f.targets("leitor",null);
+        long start=instant("2026-11-23T14:10:00Z"); // segunda às 11:10
+        Focus.Routine shorter=new Focus.Routine("Curta",1,11*60+10,6);
+        Focus.Routine longer=new Focus.Routine("Longa",1,11*60+10,10);
+        shorter.setHourLimit(1); longer.setHourLimit(1);
+        f.routines.add(shorter); f.routines.add(longer);
+        Limits.Tracker tracker=new Limits.Tracker();
+        for (int i=0;i<4;i++) {
+            long step=i*15000;
+            tracker.watch(f,target,start+step,step,zone,Long.MAX_VALUE);
+            tracker.finish(start+step+15000,step+15000,zone);
+        }
+        Limits.Window w=Limits.Window.at(start+60000,zone);
+        Limits.Block block=f.restriction(target,w);
+        check(block!=null && block.end==start+600000 && block.reason.contains("Longa"),
+            "Duas agendas esgotadas liberam só no fim da mais longa");
+        f.start(w.now,20);
+        check(f.restriction(target,w).end==start+1260000,"Foco manual mais longo prevalece sobre as agendas esgotadas");
+        f.stop(w.now+1000,zone);
+        check(f.restriction(target,w).end==start+600000,"Encerrar o foco manual mantém os saldos agendados e seus bloqueios");
+        shorter.setHourLimit(0); longer.setHourLimit(0);
+        check(f.tick(w.now,zone) && f.active.scheduled && f.restriction(target,w).end==start+600000,
+            "Duas agendas imediatas respeitam o fim mais tardio");
+        f.routines.remove(shorter); f.tick(w.now+1000,zone);
+        check(f.active!=null && f.active.title.equals("Longa"),"Excluir uma agenda imediata em curso preserva a outra");
+        longer.enabled=false; f.tick(w.now+2000,zone);
+        check(f.active==null && f.restriction(target,w)==null,"Desativar a última agenda imediata libera o aplicativo");
+        f.limits.set(Limits.SHARED,1,0);
+        long boundary=instant("2026-11-23T15:00:00Z");
+        Limits.consume(f.limits.forTargets(target),start,start+60000,zone);
+        tracker.watch(f,target,boundary-2000,1000,zone,Long.MAX_VALUE);
+        tracker.finish(boundary+3000,6000,zone);
+        check(f.limits.get(Limits.SHARED).hourUsed(Limits.Window.at(boundary+3000,zone))==0,
+            "Uma tentativa já bloqueada não desconta da próxima hora depois de voltar à tela inicial");
+    }
     public static void main(String[] args) {
         ZoneId zone=ZoneId.of("America/Sao_Paulo");
         long mon=Instant.parse("2026-11-24T02:50:00Z").toEpochMilli();
@@ -103,6 +206,8 @@ public final class FocusTest {
         f.sites.add("pulso.test");
         check(f.blocksHost(Focus.host("sub.pulso.test/a"))&&!f.blocksHost("fimpulso.test")&&!f.blocksHost("pulso.test.exemplo.org"),"Correspondência em limites de domínio");
         limits(zone);
+        scheduledLimits(zone);
+        overlappingRestrictions(zone);
         System.out.println(count+" verificações.");
     }
 }

@@ -29,9 +29,12 @@ public static class WindowBlocker
         return ProcessName(pid);
     }
 
-    public static void Apply(IReadOnlySet<string> selected)
+    public static string? Apply(IReadOnlySet<string> selected)
     {
-        if (selected.Count == 0) return;
+        if (selected.Count == 0) return null;
+        const int minimize = 6, minimizeWithoutActivation = 7;
+        var foreground = GetForegroundWindow();
+        string? interrupted = null;
         var names = new Dictionary<int, string?>();
         EnumWindows((window, _) =>
         {
@@ -41,9 +44,15 @@ public static class WindowBlocker
             {
                 names[pid] = name = ProcessName(pid);
             }
-            if (name != null && selected.Contains(name)) ShowWindowAsync(window, 6);
+            if (name != null && selected.Contains(name))
+            {
+                bool inFront = window == foreground && window == GetForegroundWindow();
+                if (ShowWindowAsync(window, inFront ? minimize : minimizeWithoutActivation) && inFront)
+                    interrupted = name;
+            }
             return true;
         }, IntPtr.Zero);
+        return interrupted;
     }
 
     public static string[] OpenApps()

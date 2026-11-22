@@ -4,17 +4,23 @@ using System.Windows;
 internal static class Program
 {
     [STAThread]
-    static int Main(string[] args)
+    static int Main(string[] args) => TestProcess.Run(() => Execute(args));
+
+    private static int Execute(string[] args)
     {
+        if (args is ["aviso-bandeja"]) return TrayNoticeChecks.Run();
         if (args is ["tema"]) return ThemeChecks.Run();
         if (args is ["tema", var imageFolder]) return ThemeChecks.Run(imageFolder);
         if (args is ["interface", var executable, var preview]) return DesktopFlow.Run(executable, preview);
         if (args is ["limite", var program]) return DesktopFlow.CheckQuota(program);
+        if (args is ["limite-agendado", var scheduledProgram]) return DesktopFlow.CheckQuota(scheduledProgram, scheduled: true);
         if (args is ["janela"])
         {
             var app = new Application();
-            return app.Run(new Window { Title = "Pulso · janela de verificação", Width = 230, Height = 110,
-                Left = -8000, Top = 5, ShowActivated = false, Content = "Janela usada pelo teste de foco." });
+            var window = new Window { Title = "Pulso · janela de verificação", Width = 230, Height = 110,
+                Left = -8000, Top = 5, ShowActivated = false, Content = "Janela usada pelo teste de foco." };
+            using var foreground = DesktopFlow.ObserveTestWindow(window);
+            return app.Run(window);
         }
         if (args.Length is < 2 or > 3 || args[0] != "navegador") return 2;
         int port = args.Length == 3 ? int.Parse(args[2]) : BrowserLink.Port;

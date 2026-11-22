@@ -14,6 +14,7 @@ public partial class MainWindow
     private TextBlock? siteState, browserState, historyToday;
     private TextBox? siteInput;
     private readonly List<(string? Key, TextBlock Label, Button Edit)> usageLabels = [];
+    private readonly List<(Routine Routine, TextBlock Label)> scheduleLabels = [];
     private int historyLimit = 40;
     private static readonly (DayOfWeek Day, string Label)[] Week =
     [
@@ -31,8 +32,19 @@ public partial class MainWindow
 
     private void RulesPage()
     {
-        var shared = Ui.Section(ContentPage, "Limite compartilhado", "Todos os itens usam o mesmo saldo. Os limites valem também fora das sessões de foco.");
+        var shared = Ui.Section(ContentPage, "Limite compartilhado", "Todos os apps e sites dividem esse saldo por hora ou por dia, em qualquer horário.");
         AddUsageRow(shared, null, null, null);
+        var schedules = Ui.Section(ContentPage, "Limites por agendamento", "Durante o horário de cada agendamento, os apps e sites desta lista dividem a cota que você escolher.");
+        foreach (var routine in data.Routines.Where(r => r.HourMinutes.HasValue).OrderBy(r => r.StartMinute).ThenBy(r => r.Name))
+        {
+            var info = new StackPanel();
+            var name = Ui.Text(routine.Name);
+            name.FontWeight = FontWeights.SemiBold;
+            info.Children.Add(name);
+            AddScheduleLabel(info, routine);
+            Ui.Row(schedules, info, Ui.Button("Editar", () => EditRoutine(routine), null, "Editar limite do agendamento " + routine.Name));
+        }
+        Ui.Buttons(schedules, Ui.Button("Gerenciar agendamentos", () => Navigate(SchedulesId), "Quiet"));
         var sites = Ui.Section(ContentPage, "Sites", "Adicione um domínio ou cole um link. Os subdomínios também entram na lista.");
         var input = Ui.TextInput("", 2048);
         siteInput = input;
@@ -110,7 +122,8 @@ public partial class MainWindow
 
     private void RefreshUsageLabels(DateTimeOffset now)
     {
-        var period = UsagePeriod.At(now, Zone);
+        var policy = new UsagePolicy(data, now, Zone);
+        var period = policy.Period;
         foreach (var (key, label, _) in usageLabels)
         {
             var rule = UsageClock.Get(data, key);
@@ -120,18 +133,34 @@ public partial class MainWindow
             if (rule.DayMinutes is { } day)
                 lines.Add("Hoje · " + UsedTime(data.Usage.Day == period.Day ? rule.DayTicks : 0) + $" de {day} min");
             if (!rule.Enabled) lines.Add(key == null ? "Desativado" : "Sem limite próprio");
-            var end = UsageClock.BlockedUntil(data, key, period);
-            if (key != null && data.Active is { } focus && focus.Start <= now && focus.End > now)
-                end = UsageClock.Later(end, focus.End);
-            if (end.HasValue)
+            var block = key == null ? policy.Shared : policy.BlockFor(key);
+            if (block != null)
             {
-                var local = end.Value.ToLocalTime();
+                var local = block.Until.ToLocalTime();
                 string date = local.Date == now.LocalDateTime.Date ? "hoje" : local.ToString("dd/MM", Pt);
                 lines.Add("Em pausa até " + date + " às " + local.ToString("HH:mm", Pt));
             }
             string text = string.Join(Environment.NewLine, lines);
             if (label.Text != text) label.Text = text;
         }
+        foreach (var (routine, label) in scheduleLabels)
+        {
+            string text = $"{routine.HourMinutes} min por hora para a lista";
+            if (!routine.Enabled) text += " · Desativado";
+            else if (policy.ActiveQuotas.FirstOrDefault(w => w.Routine.Id == routine.Id) is { } window)
+            {
+                text = "Nesta hora · " + UsedTime(policy.ScheduleUsed(routine.Id)) + $" de {routine.HourMinutes} min";
+                if (policy.ScheduleEnd(window) is { } end) text += " · Em pausa até " + end.ToLocalTime().ToString("HH:mm", Pt);
+            }
+            if (label.Text != text) label.Text = text;
+        }
+    }
+
+    private void AddScheduleLabel(Panel parent, Routine routine)
+    {
+        var label = Ui.Text("", "Hint", 3);
+        scheduleLabels.Add((routine, label));
+        parent.Children.Add(label);
     }
 
     private void EditUsageLimit(string? key, string? name)
@@ -230,11 +259,12 @@ public partial class MainWindow
             string days = string.Join(" · ", Week.Where(d => (r.Days & (1 << (int)d.Day)) != 0).Select(d => d.Label));
             string start = TimeOnly.MinValue.AddMinutes(r.StartMinute).ToString("HH:mm");
             box.Children.Add(Ui.Text($"{days}   /   {start}   /   {r.Minutes} min", null, 6));
-            box.Children.Add(Ui.Text(r.Enabled ? "Agendamento ativo" : "Agendamento desativado", "Hint", 3));
+            if (r.HourMinutes.HasValue) AddScheduleLabel(box, r);
+            else box.Children.Add(Ui.Text(r.Enabled ? "Bloqueio desde o início" : "Bloqueio desde o início · Desativado", "Hint", 3));
             Ui.Buttons(box, Ui.Button("Editar", () => EditRoutine(r), null, "Editar " + r.Name),
                 Ui.Button("Excluir", () =>
                 {
-                    if (FormWindow.Confirm(this, "Excluir agendamento?", "As próximas sessões de “" + r.Name + "” serão removidas da agenda.", "Excluir agendamento"))
+                    if (FormWindow.Confirm(this, "Excluir agendamento?", "O horário e as regras de “" + r.Name + "” serão removidos da agenda.", "Excluir agendamento"))
                         Change(data with { Routines = data.Routines.Where(item => item.Id != r.Id).ToArray() }, "Agendamento excluído.");
                 }, "Quiet", "Excluir " + r.Name));
         }
@@ -260,6 +290,28 @@ public partial class MainWindow
             checks[day] = check; daysRow.Children.Add(check);
         }
         dialog.Fields.Children.Add(daysRow);
+        var quota = new CheckBox { Content = "Limitar minutos por hora", IsChecked = initial.HourMinutes.HasValue,
+            VerticalContentAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 14, 0, 0) };
+        quota.SetResourceReference(Control.ForegroundProperty, "Ink");
+        dialog.Fields.Children.Add(quota);
+        var hint = Ui.Text("", "Hint", 4);
+        dialog.Fields.Children.Add(hint);
+        var allowance = new StackPanel();
+        var hour = Ui.TextInput(initial.HourMinutes?.ToString(Pt) ?? "", 3);
+        allowance.Children.Add(Ui.Label("Minutos por hora (1 a 60)", hour));
+        allowance.Children.Add(hour);
+        dialog.Fields.Children.Add(allowance);
+        void UpdateMode()
+        {
+            bool enabled = quota.IsChecked == true;
+            allowance.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+            hint.Text = enabled ? "Os apps e sites dividem esses minutos durante o agendamento. A cota se renova na hora cheia."
+                : "A lista fica bloqueada desde o início até o fim do agendamento.";
+            AutomationProperties.SetHelpText(quota, hint.Text);
+        }
+        quota.Checked += (_, _) => UpdateMode();
+        quota.Unchecked += (_, _) => UpdateMode();
+        UpdateMode();
         dialog.Loaded += (_, _) => name.Focus();
         dialog.Accept.Click += (_, _) =>
         {
@@ -269,12 +321,25 @@ public partial class MainWindow
             { dialog.Invalid("Digite um horário de 00:00 a 23:59.", time); return; }
             if (!int.TryParse(minutes.Text, out var duration) || duration is < 1 or > 720) { dialog.Invalid("A duração deve ficar entre 1 e 720 minutos.", minutes); return; }
             if (days == 0) { dialog.Invalid("Selecione pelo menos um dia da semana.", checks.Values.First()); return; }
+            int? perHour = null;
+            if (quota.IsChecked == true)
+            {
+                if (!int.TryParse(hour.Text.Trim(), NumberStyles.None, Pt, out int count) || count is < 1 or > 60)
+                {
+                    dialog.Invalid("Digite um número inteiro de 1 a 60 minutos por hora.", hour);
+                    hour.SelectAll();
+                    return;
+                }
+                perHour = count;
+            }
             var current = data.Routines.FirstOrDefault(r => r.Id == initial.Id) ?? initial;
             int startMinute = start.Hour * 60 + start.Minute;
-            var item = current with { Name = name.Text.Trim(), Days = days, StartMinute = startMinute, Minutes = duration,
-                LastOccurrence = current.Days == days && current.StartMinute == startMinute ? current.LastOccurrence : null };
+            var item = current with { Name = name.Text.Trim(), Days = days, StartMinute = startMinute, Minutes = duration, HourMinutes = perHour,
+                LastOccurrence = current.Days == days && current.StartMinute == startMinute && current.HourMinutes.HasValue == perHour.HasValue
+                    ? current.LastOccurrence : null };
             var routines = existing == null ? data.Routines.Append(item).ToArray() : data.Routines.Select(r => r.Id == item.Id ? item : r).ToArray();
             if (Change(data with { Routines = routines }, "Agendamento salvo.")) dialog.DialogResult = true;
+            else dialog.Invalid("O agendamento não foi salvo. Verifique o espaço e o acesso à pasta de dados.");
         };
         dialog.ShowDialog();
     }

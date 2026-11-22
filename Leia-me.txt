@@ -17,7 +17,7 @@ A lista mostra o tempo usado e o limite de cada período. Editar um valor manté
 O Pulso conta a janela em primeiro plano enquanto a tela está ligada e a sessão do Windows está desbloqueada. No navegador, conta a aba em primeiro plano nos perfis com a extensão conectada. Se o navegador e o site estiverem na lista, esse intervalo conta uma única vez para o saldo compartilhado. O tempo em segundo plano, em pausa, com o PC suspenso ou com o Pulso encerrado fica fora da contagem.
 
 Aplicativos
-Escolha uma janela aberta ou o arquivo .exe do programa. Durante a sessão ou depois de atingir um limite, o Pulso minimiza as janelas desse aplicativo quando aparecem. O programa continua em execução e o trabalho aberto fica disponível ao final da pausa.
+Escolha uma janela aberta ou o arquivo .exe do programa. Se você estiver usando ou tentar abrir um programa em pausa, o Pulso minimiza a janela e exibe um aviso com o nome do aplicativo, a causa do bloqueio e o horário de liberação, inclusive com o Pulso na bandeja. Clique em Entendi para fechar o aviso. O programa continua em execução e o trabalho aberto fica disponível ao final da pausa.
 
 Sites no Chrome e no Edge
 Abra Navegadores e clique em Copiar caminho da extensão. Abra o gerenciador do Chrome ou do Edge pelos botões da tela. Ative o Modo do desenvolvedor, escolha Carregar sem compactação ou Carregar sem pacote e cole o caminho da pasta. Volte ao Pulso para conferir a conexão. Repita nos perfis que deseja usar. Janelas anônimas ou InPrivate exigem habilitar a extensão também nesse modo.
@@ -25,7 +25,9 @@ Abra Navegadores e clique em Copiar caminho da extensão. Abra o gerenciador do 
 Se já usava a extensão, abra o Pulso atualizado e clique em Recarregar no cartão do Pulso em chrome://extensions ou edge://extensions para habilitar a medição. Um domínio na lista inclui seus subdomínios. Durante a sessão ou ao atingir um limite, as abas desses sites mostram uma página de pausa. Ao final, use Voltar ou abra o endereço novamente.
 
 Agendamentos e histórico
-Em Agendamentos, escolha os dias, a hora local e a duração. Uma sessão agendada começa enquanto o Pulso está em execução. Ao abrir o app no meio de um intervalo agendado, a sessão usa o tempo restante.
+Em Agendamentos, crie ou edite um horário e escolha os dias, a hora local e a duração. No bloqueio imediato, a lista entra em pausa assim que a sessão começa. Para distribuir um tempo de uso, marque Limitar minutos por hora e informe de 1 a 60. Um agendamento pode permitir, por exemplo, 10 minutos por hora durante o trabalho e outro pode permitir 20 minutos por hora à noite. Você também pode chegar à agenda pela Lista de bloqueio.
+
+Cada agendamento tem seu próprio saldo para toda a lista. Somente o uso durante aquele intervalo consome o saldo. Ele se renova na próxima hora cheia e o bloqueio daquele agendamento termina, no máximo, ao fim do intervalo. Se duas agendas coincidirem, o uso conta em ambas e a primeira que esgotar já coloca a lista em pausa. Os limites gerais e individuais e as sessões de foco continuam valendo. Os horários seguem o relógio local, inclusive quando o intervalo passa da meia-noite.
 
 Fechar a janela deixa o Pulso na área de notificação do Windows. Dê dois cliques no ícone para reabrir. Para encerrar o aplicativo, use Sair do Pulso no menu do ícone. Após reiniciar o PC, abra o Pulso novamente para retomar os agendamentos e os limites de uso.
 

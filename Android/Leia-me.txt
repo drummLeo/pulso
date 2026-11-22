@@ -1,4 +1,4 @@
-Pulso 1.2 para Android
+Pulso 1.3 para Android
 
 Abra o Pulso. Em Lista, escolha os aplicativos e adicione os domínios que deseja pausar. Em Foco, selecione uma duração e toque em Iniciar sessão.
 
@@ -8,7 +8,7 @@ Toque em Tema no alto de qualquer aba e escolha Sistema, Claro ou Escuro. Sistem
 Ativar o bloqueio
 Toque em Configurar acessibilidade e depois em Abrir Acessibilidade. Na One UI, procure Aplicativos instalados, selecione Pulso • Bloqueio de foco e habilite o serviço. Você pode desligá-lo no mesmo menu. O cronômetro também pode ser usado sozinho.
 
-Quando um app selecionado é aberto durante o foco, o celular volta à tela inicial. Para sites, o Pulso compara o domínio exibido na barra de endereço do Chrome, Edge ou Samsung Internet com os itens da lista e seus subdomínios. Quando encontra um deles, cobre a página e mantém a barra disponível para navegar para outro endereço. Essa proteção depende de o navegador expor a barra ao Android e atua sobre a página visível. O áudio e os downloads podem continuar em segundo plano.
+Ao tentar usar um aplicativo em pausa, o Pulso mostra o aviso Aplicativo em pausa com o nome do app, a causa e o horário de liberação. Toque em Entendi para dispensá-lo. Para sites, o Pulso compara o domínio exibido na barra de endereço do Chrome, Edge ou Samsung Internet com os itens da lista e seus subdomínios. Quando encontra um deles, cobre a página e mantém a barra disponível para navegar para outro endereço. Essa proteção depende de o navegador expor a barra ao Android e atua sobre a página visível. O áudio e os downloads podem continuar em segundo plano.
 
 Limites de uso
 Em Lista, toque em Limite ao lado de um app ou domínio. Em Minutos por hora, informe de 1 a 60. Em Minutos por dia, informe de 1 a 1440. Preencha um ou os dois campos e toque em Salvar limites. O consumo de cada período aparece abaixo do item.
@@ -22,7 +22,11 @@ Para alterar um teto, abra o mesmo editor. O novo valor considera o uso já regi
 Para testar, defina 1 minuto por hora em um aplicativo e abra-o sem iniciar uma sessão de foco. Deixe o app visível com a tela desbloqueada. Ao atingir um minuto, o celular volta à tela inicial. Em Lista, confira o consumo e o horário da liberação. Para testar o compartilhamento, defina 1 minuto por hora no limite compartilhado e alterne entre dois itens da lista. O tempo somado aparece no cartão Limite compartilhado.
 
 Agenda e histórico
-Em Agenda, defina o nome, o horário local, a duração e os dias da semana. Com a Acessibilidade ativa, a agenda aplica a lista mesmo com a tela do Pulso fechada. Em Histórico, consulte o tempo das sessões encerradas. Ao encerrar uma sessão antes do fim, os limites de uso configurados continuam valendo.
+Em Agenda, crie ou edite um agendamento e escolha o nome, o horário local, a duração e os dias. Use Bloqueio imediato para pausar toda a lista desde o início. Para distribuir um saldo, escolha Limitar minutos por hora, preencha Minutos compartilhados por hora (1 a 60) e toque em Salvar. Você também pode abrir a Agenda em Lista, pelo botão Limites por agendamento.
+
+Cada agendamento tem um saldo próprio. Por exemplo, Trabalho pode permitir 10 minutos por hora e Noite pode permitir 20. O saldo conta só o uso durante aquele intervalo e se renova a cada hora cheia. Ao fim do agendamento, seu limite deixa de valer. Quando dois agendamentos coincidem, o uso conta em ambos e a lista entra em pausa assim que um deles se esgota. Outras regras em vigor continuam valendo.
+
+Com a Acessibilidade ativa, a agenda aplica a lista mesmo com a tela do Pulso fechada. Em Histórico, consulte o tempo das sessões de foco encerradas. Ao encerrar uma sessão antes do fim, os limites de uso configurados continuam valendo.
 
 Os dados desta edição ficam no celular. O APK dispensa permissão de internet. As listas e o histórico do Android são independentes dos dados do Pulso para Windows.
 

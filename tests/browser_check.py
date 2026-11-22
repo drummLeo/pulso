@@ -38,6 +38,8 @@ def wait_for(check, label, page, timeout=12):
 
 def readable_theme(page, mode):
     return page.evaluate("""mode => {
+        const body = document.body, message = document.querySelector('p');
+        if (!body || !message) return false;
         const css = el => getComputedStyle(el);
         function luminance(color) {
             const rgb = color.match(/[\\d.]+/g).slice(0, 3).map(n => Number(n) / 255)
@@ -45,8 +47,8 @@ def readable_theme(page, mode):
             return .2126 * rgb[0] + .7152 * rgb[1] + .0722 * rgb[2];
         }
         const root = document.documentElement;
-        const surface = document.body.classList.contains('popup') ? document.body : root;
-        const bg = luminance(css(surface).backgroundColor), fg = luminance(css(document.querySelector('p')).color);
+        const surface = body.classList.contains('popup') ? body : root;
+        const bg = luminance(css(surface).backgroundColor), fg = luminance(css(message).color);
         return css(root).colorScheme === mode && (mode === 'dark' ? bg < .2 : bg > .7)
             && (Math.max(bg,fg)+.05) / (Math.min(bg,fg)+.05) >= 4.5;
     }""", mode)

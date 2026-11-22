@@ -17,10 +17,13 @@ public partial class MainWindow : Window
 {
     private readonly FocusStore store;
     private readonly BrowserLink bridge;
+    private readonly Func<IReadOnlySet<string>, string?> minimizeBlockedApps;
     private FocusData data;
     private HashSet<string> blocked = new(StringComparer.OrdinalIgnoreCase);
     private Dictionary<string, DateTimeOffset> pausedSites = new();
     private string[] watchedSites = [];
+    private bool measuringUsage, quotaWindowOpen;
+    private DateTimeOffset? siteFocusEnd;
     private readonly UsageMeter meter = new();
     private readonly Stopwatch uptime = Stopwatch.StartNew();
     private WindowsUsageSession? windowsSession;
@@ -37,10 +40,11 @@ public partial class MainWindow : Window
     private static readonly CultureInfo Pt = CultureInfo.GetCultureInfo("pt-BR");
     private static TimeZoneInfo Zone => TimeZoneInfo.Local;
 
-    public MainWindow(FocusStore store, BrowserLink bridge)
+    public MainWindow(FocusStore store, BrowserLink bridge, Func<IReadOnlySet<string>, string?>? minimizeBlockedApps = null)
     {
         this.store = store;
         this.bridge = bridge;
+        this.minimizeBlockedApps = minimizeBlockedApps ?? WindowBlocker.Apply;
         data = store.Load();
         ((DesktopApp)Application.Current).SetTheme(data.Theme);
         InitializeComponent();
@@ -65,7 +69,7 @@ public partial class MainWindow : Window
         {
             var source = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
             windowsSession = new WindowsUsageSession(source, meter.Reset, () => CheckpointUsage(true));
-            windowsSession.WatchForeground(data.Usage.Enabled);
+            windowsSession.WatchForeground(measuringUsage);
         };
         Closing += ClosingWindow;
         Application.Current.SessionEnding += (_, _) =>
@@ -78,6 +82,7 @@ public partial class MainWindow : Window
         Closed += (_, _) =>
         {
             ticker.Stop();
+            BlockNoticeWindow.Dismiss();
             windowsSession?.Dispose();
             CheckpointUsage(true);
             tray.Visible = false; tray.Icon?.Dispose(); tray.Dispose(); menu.Dispose();
@@ -120,7 +125,7 @@ public partial class MainWindow : Window
         (PageTitle.Text, PageSubtitle.Text) = id switch
         {
             RulesId => ("Lista de bloqueio", "Escolha os aplicativos e sites para suas sessões de foco e configure os limites de uso."),
-            SchedulesId => ("Agendamentos", "Programe sessões que se repetem nos dias e horários escolhidos."),
+            SchedulesId => ("Agendamentos", "Escolha os dias e horários para bloquear a lista ou limitar o tempo de uso."),
             HistoryId => ("Histórico", "Consulte as sessões registradas neste computador."),
             BrowserId => ("Navegadores", "Conecte o Chrome ou o Edge para medir o tempo de uso e colocar sites em pausa."),
             _ => ("Sessão de foco", DateLine())
@@ -136,6 +141,7 @@ public partial class MainWindow : Window
     {
         ContentPage.Children.Clear();
         usageLabels.Clear();
+        scheduleLabels.Clear();
         siteState = browserState = historyToday = null;
         siteInput = null;
         switch (page)
@@ -236,8 +242,10 @@ public partial class MainWindow : Window
     private bool Commit(FocusData next)
     {
         if (ReferenceEquals(data, next)) return true;
-        if (next.Apps != data.Apps || next.Sites != data.Sites) next = UsageClock.Reconcile(next);
-        next = UsageClock.Advance(next, DateTimeOffset.Now, Zone);
+        var now = DateTimeOffset.Now;
+        if (next.Routines != data.Routines) next = FocusClock.Tick(next, now, Zone);
+        if (next.Apps != data.Apps || next.Sites != data.Sites || next.Routines != data.Routines) next = UsageClock.Reconcile(next);
+        next = UsageClock.Advance(next, now, Zone);
         if (!WriteState(next)) return false;
         data = next;
         meter.Reset();
@@ -267,16 +275,13 @@ public partial class MainWindow : Window
 
     private void ApplyState()
     {
-        watchedSites = UsageClock.WatchedSites(data);
-        windowsSession?.WatchForeground(data.Usage.Enabled);
-        bridge.Update(data);
         Enforce(DateTimeOffset.Now, true);
         RefreshStatus();
     }
 
     private void SampleUsage(DateTimeOffset now)
     {
-        if (!data.Usage.Enabled) return;
+        if (!measuringUsage) return;
         string? app = windowsSession?.CanMeasure == true ? WindowBlocker.ForegroundProcess() : null;
         string? site = app != null && watchedSites.Length > 0 ? bridge.ForegroundSite(app) : null;
         var next = meter.Sample(data, now, uptime.Elapsed, app, site, Zone);
@@ -285,25 +290,46 @@ public partial class MainWindow : Window
 
     private bool Enforce(DateTimeOffset now, bool settingsChanged = false)
     {
-        bool focus = data.Active is { } session && now >= session.Start && now < session.End;
-        if (!settingsChanged && !focus && !data.Usage.Enabled && blocked.Count == 0 && pausedSites.Count == 0) return false;
+        var policy = new UsagePolicy(data, now, Zone);
+        if (settingsChanged || siteFocusEnd != policy.Focus?.Until)
+        {
+            siteFocusEnd = policy.Focus?.Until;
+            bridge.Update(data, siteFocusEnd);
+        }
+        bool quotaOpen = policy.ActiveQuotas.Length != 0;
+        bool watchChanged = settingsChanged || quotaOpen != quotaWindowOpen;
+        if (watchChanged)
+        {
+            quotaWindowOpen = quotaOpen;
+            measuringUsage = data.Usage.Enabled || quotaOpen;
+            watchedSites = UsageClock.WatchedSites(data, quotaOpen);
+            windowsSession?.WatchForeground(measuringUsage);
+            meter.Reset();
+        }
+        if (!watchChanged && policy.Focus == null && !measuringUsage && blocked.Count == 0 && pausedSites.Count == 0) return false;
         var apps = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var sites = new Dictionary<string, DateTimeOffset>();
-        if (data.Usage.Enabled)
-        {
-            var period = UsagePeriod.At(now, Zone);
-            foreach (var name in data.Apps)
-                if (UsageClock.BlockedUntil(data, UsageClock.AppKey(name), period).HasValue) apps.Add(name);
-            foreach (var domain in data.Sites)
-                if (UsageClock.BlockedUntil(data, UsageClock.SiteKey(domain), period) is { } end) sites[domain] = end;
-        }
-        if (focus) apps.UnionWith(data.Apps);
+        foreach (var name in data.Apps)
+            if (policy.BlockFor(UsageClock.AppKey(name)) != null) apps.Add(name);
+        foreach (var domain in data.Sites)
+            if (policy.LimitFor(UsageClock.SiteKey(domain)) is { } limit) sites[domain] = limit.Until;
         bool changed = !blocked.SetEquals(apps) || sites.Count != pausedSites.Count
             || sites.Any(pair => !pausedSites.TryGetValue(pair.Key, out var end) || end != pair.Value);
-        if (settingsChanged || changed) bridge.UpdateUsage(watchedSites, sites);
+        if (watchChanged || changed) bridge.UpdateUsage(watchedSites, sites);
         blocked = apps;
         pausedSites = sites;
-        WindowBlocker.Apply(blocked);
+        string? app = minimizeBlockedApps(blocked) ?? BlockNoticeWindow.DisplayedApp;
+        if (app != null && blocked.Contains(app) && policy.BlockFor(UsageClock.AppKey(app)) is { } rule)
+        {
+            string reason = rule.Kind switch
+            {
+                UsageBlockKind.Focus => $"Sessão de foco em andamento · {rule.Title}.",
+                UsageBlockKind.Schedule => $"O saldo por hora do agendamento “{rule.Title}” acabou.",
+                _ => rule.Title + " atingido."
+            };
+            BlockNoticeWindow.Present(app, reason, rule.Until);
+        }
+        else if (BlockNoticeWindow.DisplayedApp != null) BlockNoticeWindow.Dismiss();
         return changed;
     }
     private void Tick()
@@ -345,6 +371,7 @@ public partial class MainWindow : Window
         if (data.Sites.Length > 0 && bridge.RequiresReload) return "Recarregue a extensão na tela Navegadores para medir os sites.";
         if (data.Sites.Length > 0 && bridge.Connected.Length == 0) return "Sites aguardam a conexão do navegador.";
         if (data.Sites.Length + data.Apps.Length == 0) return "Adicione o que deseja colocar em pausa.";
+        if (quotaWindowOpen) return "O limite por hora do agendamento está em vigor.";
         if (data.Usage.Enabled) return "Limites de uso ativos na lista.";
         return "Esta lista vale para todas as sessões.";
     }
@@ -360,9 +387,9 @@ public partial class MainWindow : Window
         if (browserState != null) browserState.Text = bridge.Error ?? bridge.ExtensionWarning ?? (bridge.RequiresReload ? reload : connection);
         if (siteState != null) siteState.Text = bridge.Error ?? bridge.ExtensionWarning ?? (bridge.RequiresReload ? reload :
             browsers.Length == 0 ? "Conecte a extensão para medir e bloquear sites." : "Extensão conectada · " + browsers);
-        if (page == RulesId) RefreshUsageLabels(now);
+        if (page is RulesId or SchedulesId) RefreshUsageLabels(now);
         if (historyToday != null) historyToday.Text = MinutesText(FocusClock.Today(data, now, Zone));
-        var status = active ? "Em foco" : blocked.Count > 0 || pausedSites.Count > 0 ? "Limite atingido" : "Em espera";
+        var status = active ? "Em foco" : blocked.Count > 0 || pausedSites.Count > 0 ? "Limite atingido" : quotaWindowOpen ? "Limite agendado" : "Em espera";
         StatusText.Text = status;
         if (lastStatus != status)
         {

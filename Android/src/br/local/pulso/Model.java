@@ -11,6 +11,7 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Set;
 
 /** One main-thread model shared by the activity and the accessibility service. */
@@ -23,6 +24,7 @@ final class Model {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private String lastGood, lastUsage;
     private boolean notifyPending;
+    Runnable beforeEdit;
 
     static Model get(Context context) {
         if (instance == null) instance = new Model(context.getApplicationContext());
@@ -47,6 +49,12 @@ final class Model {
     void listen(Runnable r) { listeners.add(r); }
     void unlisten(Runnable r) { listeners.remove(r); }
     void tick(long now) { if (state.tick(now, ZoneId.systemDefault())) save(); }
+    void edit(Runnable change) {
+        if (beforeEdit!=null) beforeEdit.run();
+        change.run();
+        state.tick(System.currentTimeMillis(),ZoneId.systemDefault());
+        save();
+    }
     void save() {
         try {
             state.limits.configured.keySet().removeIf(key -> !state.hasTarget(key));
@@ -72,20 +80,28 @@ final class Model {
         } catch (JSONException e) { throw new IllegalStateException(e); }
     }
     private void writeUsage(SharedPreferences.Editor edit) throws JSONException {
-        JSONObject usage = new JSONObject();
-        for (Limits.Quota q : state.limits.configured.values())
-            usage.put(q.key,new JSONArray().put(q.hourKey).put(q.hourMillis).put(q.dayKey).put(q.dayMillis));
-        String encoded = usage.toString();
+        String encoded = usage(state).toString();
         if (!encoded.equals(lastUsage)) {
             edit.putString("usoAnterior",lastUsage).putString("uso",encoded);
             lastUsage = encoded;
         }
     }
-    private static boolean restoreUsage(Focus f,String raw) {
+    private static List<Limits.Quota> budgets(Focus f) {
+        List<Limits.Quota> all=new ArrayList<>(f.limits.configured.values());
+        for (Focus.Routine r:f.routines) if (r.quota.hourMinutes>0) all.add(r.quota);
+        return all;
+    }
+    static JSONObject usage(Focus f) throws JSONException {
+        JSONObject usage = new JSONObject();
+        for (Limits.Quota q : budgets(f))
+            usage.put(q.key,new JSONArray().put(q.hourKey).put(q.hourMillis).put(q.dayKey).put(q.dayMillis));
+        return usage;
+    }
+    static boolean restoreUsage(Focus f,String raw) {
         if (raw == null) return false;
         try {
             JSONObject usage = new JSONObject(raw);
-            for (Limits.Quota q : f.limits.configured.values()) {
+            for (Limits.Quota q : budgets(f)) {
                 JSONArray a = usage.optJSONArray(q.key);
                 if (a == null || a.length() != 4) continue;
                 if (q.hourMinutes > 0) {
@@ -100,8 +116,8 @@ final class Model {
             return true;
         } catch (JSONException corrupt) { return false; }
     }
-    private static JSONObject encode(Focus f) throws JSONException {
-        JSONObject o = new JSONObject().put("versao", 2).put("minutos", f.minutes)
+    static JSONObject encode(Focus f) throws JSONException {
+        JSONObject o = new JSONObject().put("versao", 3).put("minutos", f.minutes)
             .put("apps", new JSONArray(f.apps)).put("sites", new JSONArray(f.sites));
         JSONObject limits = new JSONObject();
         for (Limits.Quota q : f.limits.configured.values())
@@ -109,17 +125,21 @@ final class Model {
         o.put("limites",limits);
         JSONArray routines = new JSONArray(), history = new JSONArray();
         for (Focus.Routine r : f.routines) routines.put(new JSONArray().put(r.name).put(r.days).put(r.startMinute)
-            .put(r.minutes).put(r.enabled).put(r.lastDay));
+            .put(r.minutes).put(r.enabled).put(r.lastDay).put(r.id).put(r.quota.hourMinutes));
         for (Focus.Entry e : f.history) history.put(new JSONArray().put(e.title).put(e.start).put(e.end).put(e.completed));
-        if (f.active != null) o.put("sessao", new JSONArray().put(f.active.title).put(f.active.start).put(f.active.end).put(f.active.scheduled));
+        if (f.active != null) {
+            JSONArray session=new JSONArray().put(f.active.title).put(f.active.start).put(f.active.end).put(f.active.scheduled);
+            if (f.active.routineId!=null) session.put(f.active.routineId);
+            o.put("sessao",session);
+        }
         return o.put("agenda", routines).put("historico", history);
     }
-    private static Focus decode(String raw) {
+    static Focus decode(String raw) {
         if (raw == null) return null;
         try {
             JSONObject o = new JSONObject(raw);
             int version = o.getInt("versao");
-            if (version != 1 && version != 2) return null;
+            if (version<1 || version>3) return null;
             Focus f = new Focus();
             int minutes = o.getInt("minutos");
             if (Focus.validMinutes(minutes)) f.minutes = minutes;
@@ -129,7 +149,7 @@ final class Model {
                 String domain = Focus.rule(sites.getString(i)); if (domain != null) f.sites.add(domain);
             }
             JSONObject limits = o.optJSONObject("limites");
-            if (version == 2 && limits != null) {
+            if (version >= 2 && limits != null) {
                 Iterator<String> keys = limits.keys();
                 while (keys.hasNext()) {
                     String key = keys.next();
@@ -139,9 +159,15 @@ final class Model {
                 }
             }
             JSONArray routines = o.getJSONArray("agenda"), history = o.getJSONArray("historico");
+            Set<String> ids=new HashSet<>();
             for (int i = 0; i < routines.length(); i++) {
                 JSONArray a = routines.getJSONArray(i);
-                Focus.Routine r = new Focus.Routine(a.getString(0), a.getInt(1), a.getInt(2), a.getInt(3));
+                String name=a.getString(0);
+                int days=a.getInt(1), start=a.getInt(2), duration=a.getInt(3);
+                Focus.Routine r=version<3 ? new Focus.Routine(name,days,start,duration)
+                    : new Focus.Routine(a.getString(6),name,days,start,duration);
+                if (r.id.isEmpty() || !ids.add(r.id)) return null;
+                if (version>=3) r.setHourLimit(a.getInt(7));
                 if (r.days <= 0 || r.days > 127 || r.startMinute < 0 || r.startMinute >= 1440 || !Focus.validMinutes(r.minutes)) return null;
                 r.enabled = a.getBoolean(4); r.lastDay = a.getLong(5); f.routines.add(r);
             }
@@ -150,7 +176,17 @@ final class Model {
                 f.history.add(new Focus.Entry(a.getString(0), a.getLong(1), a.getLong(2), a.getBoolean(3)));
             }
             JSONArray a = o.optJSONArray("sessao");
-            if (a != null && a.getLong(2) > a.getLong(1)) f.active = new Focus.Session(a.getString(0), a.getLong(1), a.getLong(2), a.getBoolean(3));
+            if (a != null && a.getLong(2) > a.getLong(1)) {
+                String title=a.getString(0), owner=a.optString(4,null);
+                long start=a.getLong(1), end=a.getLong(2);
+                boolean scheduled=a.getBoolean(3);
+                if (scheduled && version<3) for (Focus.Routine r:f.routines) {
+                    if (!r.name.equals(title)) continue;
+                    Focus.Slot s=Focus.current(r,start,ZoneId.systemDefault());
+                    if (s!=null && s.day==r.lastDay && s.end==end) { owner=r.id; break; }
+                }
+                f.active=new Focus.Session(title,start,end,scheduled,owner);
+            }
             return f;
         } catch (JSONException | IllegalArgumentException corrupt) { return null; }
     }

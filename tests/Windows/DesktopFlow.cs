@@ -8,11 +8,14 @@ using Pulso;
 
 internal static class DesktopFlow
 {
+    private const string NoticeTitle = "Aplicativo em pausa · Pulso";
     [DllImport("user32.dll")] private static extern bool IsIconic(nint h);
     [DllImport("user32.dll")] private static extern nint GetForegroundWindow();
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(nint h);
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(nint h);
     [DllImport("user32.dll")] private static extern bool ShowWindowAsync(nint h, int command);
+    [DllImport("user32.dll")] private static extern bool ShowWindow(nint h, int command);
+    [DllImport("user32.dll")] private static extern bool PostMessageW(nint h, uint message, nint wParam, nint lParam);
     [DllImport("user32.dll")] private static extern bool SetWindowPos(nint h, nint other, int x, int y, int w, int height, uint flags);
     [DllImport("user32.dll")] private static extern bool PrintWindow(nint h, nint dc, uint flags);
     [DllImport("user32.dll")] private static extern bool GetWindowRect(nint h, out Rect rectangle);
@@ -48,6 +51,58 @@ internal static class DesktopFlow
     {
         var element = Element(root, ControlType.Edit, name);
         ((ValuePattern)element.GetCurrentPattern(ValuePattern.Pattern)).SetValue(value);
+    }
+    private static TogglePattern CheckBox(AutomationElement root, string name) =>
+        (TogglePattern)Element(root, ControlType.CheckBox, name).GetCurrentPattern(TogglePattern.Pattern);
+
+    private static AutomationElement? OpenNotice(int pid)
+    {
+        var windows = AutomationElement.RootElement.FindAll(TreeScope.Children, new AndCondition(
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Window),
+            new PropertyCondition(AutomationElement.ProcessIdProperty, pid),
+            new PropertyCondition(AutomationElement.NameProperty, NoticeTitle)));
+        if (windows.Count > 1) throw new InvalidOperationException("Há mais de um aviso de bloqueio aberto.");
+        return windows.Count == 0 ? null : windows[0];
+    }
+
+    private static AutomationElement CheckNotice(int pid, string app, string cause, DateTimeOffset end)
+    {
+        AutomationElement? notice = null;
+        Wait(() => (notice = OpenNotice(pid)) != null, "O Pulso não mostrou o aviso de bloqueio.");
+        var window = notice!;
+        Element(window, ControlType.Text, app + " está em pausa");
+        var reason = window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "BlockReason"));
+        var release = window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "BlockRelease"));
+        if (reason?.Current.Name.Contains(cause, StringComparison.OrdinalIgnoreCase) != true ||
+            release?.Current.Name.Contains(end.ToLocalTime().ToString("HH:mm"), StringComparison.Ordinal) != true)
+            throw new InvalidOperationException($"Motivo ou horário incorreto no aviso: {reason?.Current.Name} / {release?.Current.Name}");
+        if (!((WindowPattern)window.GetCurrentPattern(WindowPattern.Pattern)).Current.IsTopmost)
+            throw new InvalidOperationException("O aviso não fica sobre as outras janelas.");
+        return window;
+    }
+
+    private static string ForegroundEvent(int pid) => @"Local\Pulso.Verificacao.Foco." + pid;
+
+    internal static EventWaitHandle ObserveTestWindow(System.Windows.Window window)
+    {
+        var signal = new EventWaitHandle(false, EventResetMode.ManualReset, ForegroundEvent(Environment.ProcessId));
+        var handle = new System.Windows.Interop.WindowInteropHelper(window);
+        window.Activated += (_, _) => { if (GetForegroundWindow() == handle.Handle) signal.Set(); };
+        return signal;
+    }
+
+    private static void RestoreAndFocus(nint target, int pid)
+    {
+        using var received = EventWaitHandle.OpenExisting(ForegroundEvent(pid));
+        received.Reset();
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            ShowWindow(target, 9);
+            SetForegroundWindow(target);
+            if (GetForegroundWindow() != target && !IsIconic(target)) AutomationElement.FromHandle(target).SetFocus();
+            if (GetForegroundWindow() == target || received.WaitOne(200)) return;
+        }
+        throw new InvalidOperationException("O Windows não concedeu primeiro plano ao alvo sintético. A tentativa exige uma área de trabalho de teste com foco.");
     }
     private static AutomationElement Dialog(AutomationElement root, int pid, string title)
     {
@@ -87,7 +142,7 @@ internal static class DesktopFlow
         return h;
     }
 
-    public static int CheckQuota(string executable)
+    public static int CheckQuota(string executable, bool scheduled = false)
     {
         var temp = Directory.CreateTempSubdirectory("pulso-uso-");
         var info = new ProcessStartInfo(Path.GetFullPath(executable)) { UseShellExecute = false };
@@ -102,10 +157,18 @@ internal static class DesktopFlow
             now = DateTimeOffset.Now;
         }
         string key = UsageClock.AppKey(name);
-        var data = UsageClock.Configure(new FocusData { Apps = [name] }, key, 1, null);
+        var routine = new Routine
+        {
+            Name = "Leitura planejada", Days = 127, StartMinute = now.Hour * 60 + now.Minute,
+            Minutes = 120, HourMinutes = 1
+        };
+        var data = new FocusData { Apps = [name] };
+        data = scheduled ? data with { Routines = [routine] } : UsageClock.Configure(data, key, 1, null);
         data = UsageClock.Advance(UsageClock.Configure(data, null, null, 5), now, TimeZoneInfo.Local);
-        var item = data.Usage.Items[key] with { HourTicks = TimeSpan.FromSeconds(57).Ticks };
-        data.Usage.Items[key] = item;
+        var startingBalance = TimeSpan.FromSeconds(scheduled ? 53 : 57).Ticks;
+        if (scheduled) data.Usage.ScheduleTicks[routine.Id] = startingBalance;
+        else data.Usage.Items[key] = data.Usage.Items[key] with { HourTicks = startingBalance };
+        long Used(FocusData state) => scheduled ? state.Usage.ScheduleTicks.GetValueOrDefault(routine.Id) : state.Usage.Items[key].HourTicks;
         store.Save(data);
         var child = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = false, CreateNoWindow = true };
         child.ArgumentList.Add("janela");
@@ -115,45 +178,71 @@ internal static class DesktopFlow
         try
         {
             desktop.Start();
-            var root = AutomationElement.FromHandle(Handle(desktop));
+            nint main = Handle(desktop);
+            var root = AutomationElement.FromHandle(main);
             Element(root, ControlType.Button, "Iniciar sessão");
             sample.Start();
             nint target = Handle(sample);
             Thread.Sleep(1600);
-            if (store.Load().Usage.Items[key].HourTicks != item.HourTicks) throw new InvalidOperationException("Janela em segundo plano consumiu a cota.");
-            ShowWindowAsync(target, 9);
-            SetForegroundWindow(target);
-            if (GetForegroundWindow() != target) AutomationElement.FromHandle(target).SetFocus();
+            if (Used(store.Load()) != startingBalance || OpenNotice(desktop.Id) != null)
+                throw new InvalidOperationException("A janela em segundo plano consumiu a cota ou abriu um aviso.");
+            RestoreAndFocus(target, sample.Id);
             Wait(() => GetForegroundWindow() == target, "A janela sintética não recebeu o foco do Windows.", 4);
+            if (scheduled)
+            {
+                if (!PostMessageW(main, 0x0010, 0, 0)) throw new InvalidOperationException("Não foi possível recolher o Pulso de teste na bandeja.");
+                Wait(() => !IsWindowVisible(main), "O Pulso não foi recolhido na bandeja.");
+                if (GetForegroundWindow() != target || IsIconic(target))
+                    throw new InvalidOperationException("O alvo precisa estar em uso na bandeja antes de o limite ser atingido.");
+            }
             int foregroundChecks = 0, checks = 0;
             try
             {
                 Wait(() => {
                     checks++;
                     if (GetForegroundWindow() == target) foregroundChecks++;
-                    return IsIconic(target) && store.Load().Usage.Items[key].HourTicks >= TimeSpan.TicksPerMinute;
+                    return IsIconic(target) && Used(store.Load()) >= TimeSpan.TicksPerMinute;
                 }, "Janela em uso não foi minimizada ao atingir um minuto.", 15);
             }
             catch (InvalidOperationException)
             {
-                var observed = store.Load().Usage;
-                Console.Error.WriteLine($"Janela sintética em foco em {foregroundChecks}/{checks} amostras, minimizada={IsIconic(target)}, uso individual={TimeSpan.FromTicks(observed.Items[key].HourTicks)}, uso da lista={TimeSpan.FromTicks(observed.Shared.DayTicks)}, hora={observed.HourStart:HH:mm}.");
+                var observed = store.Load();
+                Console.Error.WriteLine($"Janela sintética em foco em {foregroundChecks}/{checks} amostras, minimizada={IsIconic(target)}, uso na regra={TimeSpan.FromTicks(Used(observed))}, uso da lista={TimeSpan.FromTicks(observed.Usage.Shared.DayTicks)}, hora={observed.Usage.HourStart:HH:mm}.");
                 throw;
             }
             var saved = store.Load();
-            if (saved.Active != null || saved.Usage.Shared.DayTicks is <= 0 || saved.Usage.Shared.DayTicks > TimeSpan.FromSeconds(3).Ticks)
+            if (saved.Active != null || saved.Usage.Shared.DayTicks is <= 0 || saved.Usage.Shared.DayTicks > TimeSpan.TicksPerMinute - startingBalance)
                 throw new InvalidOperationException("Sessão ou saldo compartilhado incorretos no momento da pausa.");
-            Click(root, "Lista de bloqueio");
-            Click(root, "Editar limite de " + name);
-            var edit = Dialog(root, desktop.Id, "Limite de " + name);
+            var end = saved.Usage.HourStart!.Value.AddHours(1);
+            string cause = scheduled ? routine.Name : "limite";
+            var notice = CheckNotice(desktop.Id, name, cause, end);
+            if (scheduled)
+            {
+                if (IsWindowVisible(main)) throw new InvalidOperationException("O aviso da bandeja reabriu a janela principal.");
+                using (var second = Process.Start(info)!) second.WaitForExit(5000);
+                Wait(() => IsWindowVisible(main), "A janela principal não reabriu.");
+                root = AutomationElement.FromHandle(main);
+            }
+            Click(notice, "Entendi");
+            Wait(() => OpenNotice(desktop.Id) == null, "Entendi não dispensou o aviso.");
+            Thread.Sleep(1100);
+            if (OpenNotice(desktop.Id) != null || !IsIconic(target) || sample.HasExited)
+                throw new InvalidOperationException("O aviso voltou sem nova tentativa ou a janela em pausa foi alterada.");
+            RestoreAndFocus(target, sample.Id);
+            CheckNotice(desktop.Id, name, cause, end);
+            Click(root, scheduled ? "Agendamentos" : "Lista de bloqueio");
+            Click(root, scheduled ? "Editar " + routine.Name : "Editar limite de " + name);
+            var edit = Dialog(root, desktop.Id, scheduled ? "Editar agendamento" : "Limite de " + name);
             Set(edit, "Minutos por hora (1 a 60)", "2");
-            Click(edit, "Salvar limite");
-            Wait(() => store.Load().Usage.Items[key].HourMinutes == 2, "Alteração da cota não foi salva.");
+            Click(edit, scheduled ? "Salvar agendamento" : "Salvar limite");
+            Wait(() => (scheduled ? store.Load().Routines.Single().HourMinutes : store.Load().Usage.Items[key].HourMinutes) == 2,
+                "Alteração da cota não foi salva.");
+            Wait(() => OpenNotice(desktop.Id) == null, "O aviso não fechou ao liberar o aplicativo.");
             ShowWindowAsync(target, 9);
             Thread.Sleep(1100);
-            if (IsIconic(target) || store.Load().Usage.Items[key].HourTicks < TimeSpan.TicksPerMinute)
+            if (IsIconic(target) || Used(store.Load()) < TimeSpan.TicksPerMinute || OpenNotice(desktop.Id) != null)
                 throw new InvalidOperationException("Aumentar o limite não liberou a janela com o consumo preservado.");
-            Console.WriteLine("OK  Janela real em primeiro plano esgotou a cota fora de sessão, foi minimizada e foi liberada ao editar o limite.");
+            Console.WriteLine($"OK  Cota {(scheduled ? "agendada" : "individual")} esgotada em primeiro plano, aviso dispensado e janela liberada ao editar o limite.");
             return 0;
         }
         finally
@@ -226,21 +315,30 @@ internal static class DesktopFlow
                      && store.Load().Usage.Shared.HourMinutes == 10, "Edição de um limite interferiu em outro.");
             Snap(handle, Path.Combine(Path.GetDirectoryName(snapshot)!, "pulso-limites.png"));
             Console.WriteLine("OK  Limite individual e saldo compartilhado coexistem, validam minutos e aceitam edição");
-            Click(root, "Agendamentos");
+            Element(root, ControlType.Text, "Limites por agendamento");
+            Click(root, "Gerenciar agendamentos");
             Click(root, "Novo agendamento");
             var routine = Dialog(root, desktop.Id, "Novo agendamento");
             Set(routine, "Nome da sessão", "Leitura da tarde");
             Set(routine, "Horário de início (HH:mm)", DateTime.Now.AddHours(4).ToString("HH:mm"));
             Set(routine, "Duração em minutos (1 a 720)", "35");
+            CheckBox(routine, "Limitar minutos por hora").Toggle();
+            Set(routine, "Minutos por hora (1 a 60)", "0");
             Click(routine, "Salvar agendamento");
-            Wait(() => store.Load().Routines.SingleOrDefault()?.Minutes == 35, "Agendamento não salvo.");
+            if (store.Load().Routines.Length != 0) throw new InvalidOperationException("O agendamento aceitou zero minutos por hora.");
+            Set(routine, "Minutos por hora (1 a 60)", "7");
+            Click(routine, "Salvar agendamento");
+            Wait(() => store.Load().Routines.SingleOrDefault() is { Minutes: 35, HourMinutes: 7 }, "Agendamento com limite por hora não salvo.");
             Click(root, "Desativar Leitura da tarde");
             Wait(() => !store.Load().Routines.Single().Enabled, "Agendamento não desativado.");
             Click(root, "Editar Leitura da tarde");
             routine = Dialog(root, desktop.Id, "Editar agendamento");
             Set(routine, "Nome da sessão", "Leitura editada");
+            var toggle = CheckBox(routine, "Limitar minutos por hora");
+            if (toggle.Current.ToggleState != ToggleState.On) throw new InvalidOperationException("O editor perdeu o limite por hora.");
+            toggle.Toggle();
             Click(routine, "Salvar agendamento");
-            Wait(() => store.Load().Routines.Single().Name == "Leitura editada", "Edição não persistida.");
+            Wait(() => store.Load().Routines.Single() is { Name: "Leitura editada", HourMinutes: null }, "Edição não persistida.");
             Click(root, "Excluir Leitura editada");
             Click(Dialog(root, desktop.Id, "Excluir agendamento?"), "Excluir agendamento");
             Wait(() => store.Load().Routines.Length == 0, "Agendamento não excluído.");
@@ -253,17 +351,34 @@ internal static class DesktopFlow
             Wait(() => store.Load().Minutes == 18, "Duração personalizada não salva.");
             Click(root, "Iniciar sessão");
             Wait(() => store.Load().Active != null && IsIconic(target) && !sample.HasExited, "Janela de teste não foi minimizada.");
-            ShowWindowAsync(target, 9);
-            Thread.Sleep(1100);
-            if (!IsIconic(target)) throw new InvalidOperationException("A janela voltou durante a sessão.");
+            if (OpenNotice(desktop.Id) != null) throw new InvalidOperationException("Um bloqueio em segundo plano abriu o aviso.");
+            Click(root, "Encerrar sessão");
+            Click(Dialog(root, desktop.Id, "Encerrar a sessão?"), "Encerrar sessão");
+            Wait(() => store.Load().Active == null, "A janela sintética não foi liberada.");
+            var startSession = (InvokePattern)Element(root, ControlType.Button, "Iniciar sessão").GetCurrentPattern(InvokePattern.Pattern);
+            RestoreAndFocus(target, sample.Id);
+            if (GetForegroundWindow() != target) throw new InvalidOperationException("O alvo precisa estar em uso antes do início da sessão.");
+            startSession.Invoke();
+            Wait(() => store.Load().Active != null && IsIconic(target), "A sessão não minimizou a janela em uso.");
+            var notice = CheckNotice(desktop.Id, "Pulso.Verificacao", "sessão", store.Load().Active!.End);
             ((WindowPattern)root.GetCurrentPattern(WindowPattern.Pattern)).Close();
             Wait(() => !IsWindowVisible(handle) && !desktop.HasExited, "A janela não foi recolhida na bandeja.");
+            var noticeHandle = notice.Current.NativeWindowHandle;
+            Thread.Sleep(1100);
+            if (OpenNotice(desktop.Id)?.Current.NativeWindowHandle != noticeHandle || IsWindowVisible(handle) || !IsIconic(target))
+                throw new InvalidOperationException("O aviso na bandeja se repetiu ou restaurou a janela errada.");
+            Snap(noticeHandle, Path.Combine(Path.GetDirectoryName(snapshot)!, "pulso-aviso.png"));
+            Element(notice, ControlType.Button, "Entendi").SetFocus();
+            if (!PostMessageW(noticeHandle, 0x0100, 0x1B, 1))
+                throw new InvalidOperationException("Não foi possível enviar Escape ao aviso de teste.");
+            Wait(() => OpenNotice(desktop.Id) == null, "A tecla Escape não dispensou o aviso.");
             using (var second = Process.Start(info)!) second.WaitForExit(5000);
             Wait(() => IsWindowVisible(handle) && !desktop.HasExited, "Segunda abertura não restaurou a janela.");
             root = AutomationElement.FromHandle(handle);
             Click(root, "Encerrar sessão");
             Click(Dialog(root, desktop.Id, "Encerrar a sessão?"), "Encerrar sessão");
-            Wait(() => store.Load().Active == null && store.Load().History.Length == 1, "Sessão não foi encerrada.");
+            Wait(() => store.Load().Active == null && store.Load().History.Length == 2, "Sessão não foi encerrada.");
+            Wait(() => OpenNotice(desktop.Id) == null, "O aviso permaneceu após o fim da sessão.");
             ShowWindowAsync(target, 9);
             Thread.Sleep(1000);
             if (IsIconic(target)) throw new InvalidOperationException("A janela não foi liberada.");

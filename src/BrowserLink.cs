@@ -88,10 +88,12 @@ public sealed class BrowserLink
         finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 
-    public void Update(FocusData data)
+    public void Update(FocusData data) => Update(data, new UsagePolicy(data, DateTimeOffset.Now, TimeZoneInfo.Local).Focus?.Until);
+
+    internal void Update(FocusData data, DateTimeOffset? focusEnd)
     {
-        long until = data.Active?.End.ToUnixTimeMilliseconds() ?? 0;
-        string[] sites = data.Active == null ? [] : data.Sites;
+        long until = focusEnd?.ToUnixTimeMilliseconds() ?? 0;
+        string[] sites = focusEnd.HasValue ? data.Sites : [];
         string theme = data.Theme is "light" or "dark" ? data.Theme : "system";
         lock (policyLock)
         {

@@ -52,6 +52,7 @@ public final class MainActivity extends Activity {
     private Bundle restoring = Bundle.EMPTY;
     private Ui.Dial dial;
     private final Map<Limits.Quota,TextView> usageLabels = new LinkedHashMap<>();
+    private final Map<Focus.Routine,TextView> routineUsage = new LinkedHashMap<>();
     private int tab, historyLimit=30, pendingScroll=-1;
     private boolean lastService;
     private final Runnable pulse = new Runnable() {
@@ -230,7 +231,7 @@ public final class MainActivity extends Activity {
         if(body==null)return;
         if(resetScroll) pendingScroll=0;
         else if(pendingScroll<0) pendingScroll=scroll.getScrollY();
-        body.removeAllViews(); nav.removeAllViews(); today=null; dial=null; usageLabels.clear();
+        body.removeAllViews(); nav.removeAllViews(); today=null; dial=null; usageLabels.clear(); routineUsage.clear();
         lastService=FocusService.connected;
         for(int i=0;i<TABS.length;i++) {
             final int dest=i;
@@ -261,10 +262,16 @@ public final class MainActivity extends Activity {
             String total=duration(f.todayMillis(now,ZoneId.systemDefault()));
             if(!total.contentEquals(today.getText()))today.setText(total);
         }
-        if (!usageLabels.isEmpty()) {
+        if (!usageLabels.isEmpty() || !routineUsage.isEmpty()) {
             Limits.Window window=Limits.Window.at(now,ZoneId.systemDefault());
             for (Map.Entry<Limits.Quota,TextView> row:usageLabels.entrySet()) {
-                String value=usageSummary(row.getKey(),window);
+                String value=usageSummary(row.getKey(),window,Long.MAX_VALUE);
+                if (!value.contentEquals(row.getValue().getText())) row.getValue().setText(value);
+            }
+            for (Map.Entry<Focus.Routine,TextView> row:routineUsage.entrySet()) {
+                Focus.Routine r=row.getKey();
+                Focus.Slot slot=Focus.current(r,now,window.zone);
+                String value=slot==null ? "Fora do horário" : usageSummary(r.quota,window,slot.end);
                 if (!value.contentEquals(row.getValue().getText())) row.getValue().setText(value);
             }
         }
@@ -297,7 +304,7 @@ public final class MainActivity extends Activity {
         }
         put(hero,button(this,active?"Encerrar sessão":"Iniciar sessão",on_focus_action,focus_action,()->{
             long at=System.currentTimeMillis(); model.tick(at);
-            if(f.active==null) { if(f.start(at,f.minutes))model.save(); }
+            if(f.active==null) model.edit(()->f.start(at,f.minutes));
             else confirmEnd(f.active);
         }),9);
         LinearLayout protection=card(body);
@@ -307,13 +314,13 @@ public final class MainActivity extends Activity {
         put(protection,button(this,lastService?"Editar lista":"Configurar acessibilidade",accent,accent_surface,()->{if(lastService)go(1);else permission();}),10);
         LinearLayout summary=card(body); heading(summary,"Foco de hoje",""); today=text(this,"",25,accent,true); put(summary,today,6);
         Focus.Slot next=f.next(now,ZoneId.systemDefault());
-        if(next!=null) put(summary,text(this,"Próxima sessão · "+next.routine.name+" · "+time(next.start,"EEE HH:mm"),14,text_muted,false),6);
+        if(next!=null) put(summary,text(this,"Próximo agendamento · "+next.routine.name+" · "+time(next.start,"EEE HH:mm"),14,text_muted,false),6);
     }
     private static String count(int n,String one,String many){return n+" "+(n==1?one:many);}
     private void toast(String s){Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}
     private void confirmEnd(Focus.Session current) {
         AlertDialog dialog=confirm("Encerrar a sessão?","O tempo decorrido fica no histórico. Os limites de uso continuam valendo.","Encerrar sessão",()->{
-            if(f.active==current && f.stop(System.currentTimeMillis(),ZoneId.systemDefault()))model.save();
+            if(f.active==current) model.edit(()->f.stop(System.currentTimeMillis(),ZoneId.systemDefault()));
         });
         remember(dialog,"encerrar",state->state.putLong("inicio",current.start));
     }
@@ -354,8 +361,11 @@ public final class MainActivity extends Activity {
         return dialog;
     }
     private int validDuration(EditText edit) {
-        try{int n=Integer.parseInt(edit.getText().toString().trim());if(Focus.validMinutes(n))return n;}catch(NumberFormatException ignored){}
-        edit.setError("Digite de 1 a 720 minutos.");edit.requestFocus();return 0;
+        return requiredMinutes(edit,Focus.MAX_MINUTES);
+    }
+    private int requiredMinutes(EditText edit,int max) {
+        try{int n=Integer.parseInt(edit.getText().toString().trim());if(n>=1 && n<=max)return n;}catch(NumberFormatException ignored){}
+        edit.setError("Digite de 1 a "+max+" minutos.");edit.requestFocus();return 0;
     }
     private void customDuration(){
         LinearLayout box=fields();EditText edit=field(""+f.minutes,"Minutos",true);fieldLabel(box,"Duração em minutos",edit);
@@ -372,12 +382,14 @@ public final class MainActivity extends Activity {
         put(apps,button(this,"Escolher aplicativos",accent,accent_surface,this::appPicker),10);
         LinearLayout sites=card(body);
         heading(sites,"Sites","No Chrome, Edge e Samsung Internet, o Pulso cobre a página quando a barra de endereço mostra um domínio da lista. Inclui subdomínios.");
-        for(String site:f.sites)ruleRow(sites,site,Limits.site(site),()->{f.sites.remove(site);model.save();});
+        for(String site:f.sites)ruleRow(sites,site,Limits.site(site),()->model.edit(()->f.sites.remove(site)));
         put(sites,button(this,"Adicionar site",accent,accent_surface,this::addSite),9);
         LinearLayout shared=card(body);
         heading(shared,"Limite compartilhado","Os apps e sites da lista usam o mesmo saldo. Você também pode definir um limite em cada item.");
         usageLabel(shared,Limits.SHARED);
         put(shared,button(this,"Editar limite compartilhado",accent,accent_surface,()->editLimits(Limits.SHARED,"Limite compartilhado")),8);
+        put(shared,text(this,"Para usar um saldo próprio só em certos dias e horários, configure-o na Agenda.",14,text_muted,false),10);
+        put(shared,button(this,"Limites por agendamento",accent,accent_surface,()->go(2)),6);
         LinearLayout setup=card(body); heading(setup,"Serviço de bloqueio",lastService?"O serviço está ativo neste celular.":"Ative em Acessibilidade para contar o uso e aplicar os bloqueios.");
         put(setup,button(this,lastService?"Gerenciar serviço":"Configurar acessibilidade",accent,accent_surface,this::permission),8);
     }
@@ -403,12 +415,12 @@ public final class MainActivity extends Activity {
         if(seconds<60)return seconds+" s";
         return seconds/60+" min"+(seconds%60==0?"":" "+seconds%60+" s");
     }
-    private static String usageSummary(Limits.Quota q,Limits.Window w) {
+    private static String usageSummary(Limits.Quota q,Limits.Window w,long windowEnd) {
         List<String> lines=new ArrayList<>();
         if(q.hourMinutes>0)lines.add("Nesta hora · "+usageTime(q.hourUsed(w))+" de "+q.hourMinutes+" min");
         if(q.dayMinutes>0)lines.add("Hoje · "+usageTime(q.dayUsed(w))+" de "+q.dayMinutes+" min");
         Limits.Block block=q.blocked(w);
-        if(block!=null)lines.add("Em pausa até "+time(block.end,"HH:mm"));
+        if(block!=null)lines.add("Em pausa até "+time(Math.min(block.end,windowEnd),"HH:mm"));
         return String.join("\n",lines);
     }
     private int limitValue(EditText edit,int max) {
@@ -430,8 +442,8 @@ public final class MainActivity extends Activity {
         AlertDialog dialog=form(title,box,"Salvar limites",()->{
             int h=limitValue(hour,Limits.MAX_HOUR); if(h<0)return false;
             int d=limitValue(day,Limits.MAX_DAY); if(d<0)return false;
-            f.limits.set(key,h,d); model.save(); return true;
-        },q==null?null:()->{f.limits.set(key,0,0);model.save();});
+            model.edit(()->f.limits.set(key,h,d)); return true;
+        },q==null?null:()->model.edit(()->f.limits.set(key,0,0)));
         remember(dialog,"limite",state->{state.putString("alvo",key); state.putString("titulo",title);},hour,day);
     }
     private void addSite(){
@@ -440,8 +452,8 @@ public final class MainActivity extends Activity {
         AlertDialog dialog=form("Adicionar site",box,"Adicionar",()->{
             String host=Focus.rule(e.getText().toString());
             if(host==null){e.setError("Digite um domínio válido, como exemplo.com.");return false;}
-            if(!f.sites.add(host)){e.setError("Este domínio já está na lista.");return false;}
-            model.save();return true;
+            if(f.sites.contains(host)){e.setError("Este domínio já está na lista.");return false;}
+            model.edit(()->f.sites.add(host));return true;
         });
         remember(dialog,"site",null,e);
     }
@@ -472,7 +484,7 @@ public final class MainActivity extends Activity {
             public void afterTextChanged(Editable s){}
         });
         AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Escolher aplicativos").setView(box).setNegativeButton("Cancelar",null)
-            .setPositiveButton("Salvar lista",(d,w)->{f.apps.clear();f.apps.addAll(selected);model.save();}).show();
+            .setPositiveButton("Salvar lista",(d,w)->model.edit(()->{f.apps.clear();f.apps.addAll(selected);})).show();
         remember(dialog,"apps",state->{
             state.putStringArrayList("selecionados",new ArrayList<>(selected));
             state.putInt("item",list.getFirstVisiblePosition());
@@ -488,12 +500,16 @@ public final class MainActivity extends Activity {
     private void agenda(){
         put(body,text(this,"Os horários seguem o relógio do celular. Com o serviço ativo, o bloqueio funciona em segundo plano.",14,text_muted,false),6);
         put(body,button(this,"Novo agendamento",on_accent,accent,()->editRoutine(null)),12);
-        if(f.routines.isEmpty()){heading(card(body),"Nenhum agendamento","Escolha os dias, o horário e a duração da sua primeira sessão recorrente.");return;}
+        if(f.routines.isEmpty()){heading(card(body),"Nenhum agendamento","Escolha os dias, o horário e a duração do seu primeiro agendamento.");return;}
         for(Focus.Routine r:f.routines){
             LinearLayout c=card(body);heading(c,r.name,repeat(r.days)+"  ·  "+hm(r.startMinute)+"  ·  "+r.minutes+" min");
+            put(c,text(this,r.quota.hourMinutes==0?"Bloqueio imediato":"Saldo compartilhado · "+r.quota.hourMinutes+" min por hora",15,text_primary,true),7);
+            if(r.quota.hourMinutes>0 && r.enabled) {
+                TextView usage=text(this,"",14,text_muted,false); put(c,usage,3); routineUsage.put(r,usage);
+            }
             Switch sw=new Switch(this);sw.setText(r.enabled?"Agendamento ativo":"Agendamento desativado");sw.setTextColor(getColor(text_primary));
             sw.setMinHeight(dp(this,48));sw.setChecked(r.enabled);sw.setContentDescription("Ativar "+r.name);put(c,sw,4);
-            sw.setOnCheckedChangeListener((v,on)->{r.enabled=on;model.save();});
+            sw.setOnCheckedChangeListener((v,on)->model.edit(()->r.enabled=on));
             LinearLayout line=row(this);put(c,line,3);weighted(line,button(this,"Editar",accent,accent_surface,()->editRoutine(r)),0);
             weighted(line,button(this,"Excluir",accent,card_surface,()->confirmDelete(r)),6);
         }
@@ -506,9 +522,8 @@ public final class MainActivity extends Activity {
         }
     }
     private void confirmDelete(Focus.Routine routine) {
-        AlertDialog dialog=confirm("Excluir agendamento?","As próximas sessões de “"+routine.name+"” serão removidas.","Excluir",()->{
-            f.routines.remove(routine); model.save();
-        });
+        AlertDialog dialog=confirm("Excluir agendamento?","O Pulso deixará de aplicar as regras de “"+routine.name+"”.","Excluir",
+            ()->model.edit(()->f.routines.remove(routine)));
         remember(dialog,"excluir",state->saveRoutineIdentity(state,routine));
     }
     private void pickTime(Button clock,int[] start,Bundle saved) {
@@ -519,6 +534,11 @@ public final class MainActivity extends Activity {
         picker.setOnDismissListener(ignored->{if(timePicker==picker)timePicker=null;});
         picker.show();
         if(saved!=null)picker.onRestoreInstanceState(saved);
+    }
+    private RadioButton scheduleOption(RadioGroup group,String label) {
+        RadioButton option=new RadioButton(this);
+        option.setId(View.generateViewId()); option.setText(label); option.setTextColor(getColor(text_primary));
+        option.setMinHeight(dp(this,48)); group.addView(option); return option;
     }
     private void editRoutine(Focus.Routine original){
         boolean fresh=original==null;LinearLayout box=fields();
@@ -534,23 +554,37 @@ public final class MainActivity extends Activity {
             if(i%3==0){line=row(this);put(box,line,0);}
             checks[i]=new CheckBox(this);checks[i].setText(DAYS[i]);checks[i].setChecked((mask&(1<<i))!=0);checks[i].setMinHeight(dp(this,48));weighted(line,checks[i],0);
         }
+        put(box,text(this,"Uso da lista durante o agendamento",14,text_primary,true),10);
+        RadioGroup mode=new RadioGroup(this); put(box,mode,2);
+        RadioButton direct=scheduleOption(mode,"Bloqueio imediato");
+        RadioButton metered=scheduleOption(mode,"Limitar minutos por hora");
+        LinearLayout budget=col(this); put(box,budget,0);
+        int savedLimit=fresh?0:original.quota.hourMinutes;
+        EditText hour=field(savedLimit==0?"":Integer.toString(savedLimit),"1 a 60",true);
+        fieldLabel(budget,"Minutos compartilhados por hora",hour);
+        put(budget,text(this,"Apps e sites da lista dividem este saldo. Ele se renova na hora cheia e só vale neste agendamento.",14,text_muted,false),5);
+        mode.setOnCheckedChangeListener((group,id)->budget.setVisibility(id==metered.getId()?View.VISIBLE:View.GONE));
+        mode.check(restoring.getBoolean("porUso",savedLimit>0)?metered.getId():direct.getId());
         TextView error=text(this,"",14,error_text,false);error.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);put(box,error,2);
         AlertDialog dialog=form(fresh?"Novo agendamento":"Editar agendamento",box,"Salvar",()->{
             String label=name.getText().toString().trim();if(label.isEmpty()){name.setError("Dê um nome à sessão.");return false;}
             int n=validDuration(minutes);if(n==0)return false;
             int days=checkedDays(checks);
             if(days==0){error.setText("Selecione pelo menos um dia.");return false;}
-            if(fresh)f.routines.add(new Focus.Routine(label,days,start[0],n));
-            else{
-                if(original.days!=days||original.startMinute!=start[0])original.lastDay=Long.MIN_VALUE;
-                original.name=label;original.days=days;original.startMinute=start[0];original.minutes=n;
-            }
-            model.save();return true;
+            int limit=metered.isChecked()?requiredMinutes(hour,Limits.MAX_HOUR):0;
+            if(metered.isChecked() && limit==0)return false;
+            model.edit(()->{
+                Focus.Routine r=fresh?new Focus.Routine(label,days,start[0],n):original;
+                if(r.days!=days || r.startMinute!=start[0] || (r.quota.hourMinutes==0)!=(limit==0)) r.lastDay=Long.MIN_VALUE;
+                r.name=label; r.days=days; r.startMinute=start[0]; r.minutes=n; r.setHourLimit(limit);
+                if(fresh)f.routines.add(r);
+            });
+            return true;
         });
         remember(dialog,"agenda",state->{
             saveRoutineIdentity(state,original);
-            state.putInt("hora",start[0]); state.putInt("dias",checkedDays(checks));
-        },name,minutes);
+            state.putInt("hora",start[0]); state.putInt("dias",checkedDays(checks)); state.putBoolean("porUso",metered.isChecked());
+        },name,minutes,hour);
         Bundle savedClock=restoring.getBundle("relogio");
         if(savedClock!=null)pickTime(clock,start,savedClock);
     }

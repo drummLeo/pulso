@@ -12,6 +12,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.UUID;
 
 /** All timestamps are wall-clock milliseconds; repeat rules use local civil time. */
 final class Focus {
@@ -26,20 +27,36 @@ final class Focus {
     Session active;
 
     static final class Routine {
+        final String id;
+        final Limits.Quota quota;
         String name;
         int days, startMinute, minutes;
         boolean enabled = true;
         long lastDay = Long.MIN_VALUE;
         Routine(String name, int days, int startMinute, int minutes) {
+            this(UUID.randomUUID().toString(),name,days,startMinute,minutes);
+        }
+        Routine(String id,String name,int days,int startMinute,int minutes) {
+            this.id=id;
+            quota=new Limits.Quota("agenda:"+id);
             this.name = name; this.days = days; this.startMinute = startMinute; this.minutes = minutes;
+        }
+        void setHourLimit(int value) {
+            if (!Limits.valid(value,0)) throw new IllegalArgumentException("O limite por hora deve estar entre 1 e 60.");
+            if (value==0) { quota.hourKey=Long.MIN_VALUE; quota.hourMillis=0; }
+            quota.hourMinutes=value;
         }
     }
     static final class Session {
-        final String title;
+        final String title, routineId;
         final long start, end;
         final boolean scheduled;
         Session(String title, long start, long end, boolean scheduled) {
+            this(title,start,end,scheduled,null);
+        }
+        Session(String title,long start,long end,boolean scheduled,String routineId) {
             this.title = title; this.start = start; this.end = end; this.scheduled = scheduled;
+            this.routineId = routineId;
         }
     }
     static final class Entry {
@@ -75,31 +92,60 @@ final class Focus {
     private static LocalDate localDay(long now, ZoneId zone) {
         return Instant.ofEpochMilli(now).atZone(zone).toLocalDate();
     }
+    static Slot current(Routine r,long now,ZoneId zone) {
+        LocalDate today=localDay(now,zone);
+        for (int offset=0; offset>=-1; offset--) {
+            Slot s=slot(r,today.plusDays(offset),zone);
+            if (s!=null && s.start<=now && now<s.end) return s;
+        }
+        return null;
+    }
+    List<Slot> meteredSlots(long from,long until,ZoneId zone) {
+        List<Slot> result=new ArrayList<>();
+        LocalDate first=localDay(from,zone).minusDays(1), last=localDay(until,zone);
+        for (Routine r:routines) {
+            if (!r.enabled || r.quota.hourMinutes==0) continue;
+            for (LocalDate day=first; !day.isAfter(last); day=day.plusDays(1)) {
+                Slot s=slot(r,day,zone);
+                if (s!=null && s.start<until && from<s.end) result.add(s);
+            }
+        }
+        return result;
+    }
     boolean tick(long now, ZoneId zone) {
         boolean changed = false;
         if (active != null && active.end <= now) { finish(active.end, true); changed = true; }
+        if (active!=null && active.routineId!=null) {
+            Slot owner=null;
+            for (Routine r:routines) if (active.routineId.equals(r.id) && r.quota.hourMinutes==0) {
+                owner=current(r,now,zone);
+                break;
+            }
+            if (owner==null) { finish(now,false); changed=true; }
+            else if (!active.title.equals(owner.routine.name) || active.end!=owner.end) {
+                active=new Session(owner.routine.name,active.start,owner.end,true,owner.routine.id);
+                owner.routine.lastDay=owner.day;
+                changed=true;
+            }
+        }
         if (active != null || routines.isEmpty()) return changed;
-        LocalDate today = localDay(now, zone);
         Slot due = null;
         for (Routine r : routines) {
-            for (int offset = -1; offset <= 0; offset++) {
-                Slot w = slot(r, today.plusDays(offset), zone);
-                if (w != null && w.day != r.lastDay && w.start <= now && now < w.end && (due == null || w.start < due.start)) due = w;
-            }
+            if (r.quota.hourMinutes>0) continue;
+            Slot w=current(r,now,zone);
+            if (w!=null && w.day!=r.lastDay && (due==null || w.start<due.start)) due=w;
         }
         if (due == null) return changed;
         due.routine.lastDay = due.day;
-        active = new Session(due.routine.name, now, due.end, true);
+        active = new Session(due.routine.name, now, due.end, true, due.routine.id);
         return true;
     }
     boolean stop(long now, ZoneId zone) {
         if (active == null) return false;
-        LocalDate today = localDay(now, zone);
         for (Routine r : routines) {
-            for (int offset = -1; offset <= 0; offset++) {
-                Slot w = slot(r, today.plusDays(offset), zone);
-                if (w != null && w.start <= now && now < w.end) r.lastDay = w.day;
-            }
+            if (r.quota.hourMinutes>0) continue;
+            Slot w=current(r,now,zone);
+            if (w!=null) r.lastDay=w.day;
         }
         finish(now, now >= active.end);
         return true;
@@ -111,13 +157,20 @@ final class Focus {
         active = null;
     }
     Slot next(long now, ZoneId zone) {
+        return next(now,zone,false);
+    }
+    Slot next(long now,ZoneId zone,boolean onlyImmediate) {
         if (routines.isEmpty()) return null;
         LocalDate today = localDay(now, zone);
         Slot next = null;
         for (Routine r : routines) {
+            if (!r.enabled || onlyImmediate && r.quota.hourMinutes>0) continue;
             for (int offset = 0; offset <= 7; offset++) {
                 Slot w = slot(r, today.plusDays(offset), zone);
-                if (w != null && w.start > now && w.day != r.lastDay && (next == null || w.start < next.start)) next = w;
+                if (w!=null && w.start>now && (r.quota.hourMinutes>0 || w.day!=r.lastDay)) {
+                    if (next==null || w.start<next.start) next=w;
+                    break;
+                }
             }
         }
         return next;
@@ -179,9 +232,9 @@ final class Focus {
         return key.equals(Limits.SHARED) || key.startsWith("app:") && apps.contains(key.substring(4))
             || key.startsWith("site:") && sites.contains(key.substring(5));
     }
-    boolean monitorsSites() {
+    boolean monitorsSites(boolean meteredSchedule) {
         if (sites.isEmpty()) return false;
-        if (active != null || limits.get(Limits.SHARED) != null) return true;
+        if (active != null || meteredSchedule || limits.get(Limits.SHARED) != null) return true;
         for (String domain : sites) if (limits.get(Limits.site(domain)) != null) return true;
         return false;
     }
@@ -190,6 +243,17 @@ final class Focus {
         Limits.Block block = active != null && active.end > window.now
             ? new Limits.Block(active.end,"Sessão de foco em andamento") : null;
         for (Limits.Quota q : limits.forTargets(targets)) block = Limits.Block.later(block,q.blocked(window));
+        for (Routine r:routines) {
+            if (!r.enabled) continue;
+            Slot s=current(r,window.now,window.zone);
+            if (s==null) continue;
+            if (r.quota.hourMinutes>0) {
+                if (r.quota.remaining(window)==0) block=Limits.Block.later(block,
+                    new Limits.Block(Math.min(s.end,window.hourEnd),"Limite por hora do agendamento “"+r.name+"” atingido"));
+            } else if (s.day!=r.lastDay) {
+                block=Limits.Block.later(block,new Limits.Block(s.end,"Foco agendado · "+r.name));
+            }
+        }
         return block;
     }
 }

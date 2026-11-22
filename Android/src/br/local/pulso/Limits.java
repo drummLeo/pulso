@@ -46,8 +46,10 @@ final class Limits {
     }
 
     static final class Window {
+        final ZoneId zone;
         final long now, hourKey, hourEnd, dayKey, dayEnd;
-        private Window(long now, long hourKey, long hourEnd, long dayKey, long dayEnd) {
+        private Window(ZoneId zone,long now, long hourKey, long hourEnd, long dayKey, long dayEnd) {
+            this.zone=zone;
             this.now=now; this.hourKey=hourKey; this.hourEnd=hourEnd; this.dayKey=dayKey; this.dayEnd=dayEnd;
         }
         static Window at(long now, ZoneId zone) {
@@ -58,7 +60,7 @@ final class Limits {
             ZoneOffsetTransition transition = zone.getRules().nextTransition(instant);
             if (transition != null) end = Math.min(end, transition.getInstant().toEpochMilli());
             long midnight = local.toLocalDate().plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli();
-            return new Window(now, key, end, local.toLocalDate().toEpochDay(), midnight);
+            return new Window(zone,now, key, end, local.toLocalDate().toEpochDay(), midnight);
         }
     }
     static final class Block {
@@ -74,7 +76,7 @@ final class Limits {
         final String key;
         int hourMinutes, dayMinutes;
         long hourKey = Long.MIN_VALUE, dayKey = Long.MIN_VALUE, hourMillis, dayMillis;
-        private Quota(String key) { this.key = key; }
+        Quota(String key) { this.key = key; }
         long hourUsed(Window w) { return hourMinutes > 0 && hourKey == w.hourKey ? hourMillis : 0; }
         long dayUsed(Window w) { return dayMinutes > 0 && dayKey == w.dayKey ? dayMillis : 0; }
         long remaining(Window w) {
@@ -100,6 +102,12 @@ final class Limits {
         for (Quota q : rules) remaining = Math.min(remaining, q.remaining(w));
         return remaining;
     }
+    static List<Quota> at(List<Quota> base,List<Focus.Slot> schedules,long now) {
+        if (schedules.isEmpty()) return base;
+        List<Quota> result=new ArrayList<>(base);
+        for (Focus.Slot s:schedules) if (s.start<=now && now<s.end) result.add(s.routine.quota);
+        return result;
+    }
     static boolean consume(List<Quota> rules, long from, long until, ZoneId zone) {
         if (rules.isEmpty()) return false;
         boolean changed = false;
@@ -119,27 +127,42 @@ final class Limits {
     /** Only the running service owns an observation. Never restore it from disk. */
     static final class Tracker {
         static final long CHECKPOINT = 5000L;
+        private static final long MAX_SAMPLE = 4 * CHECKPOINT;
         private long wall, uptime, stopAt;
         private ZoneId zone;
         private List<Quota> observed = Collections.emptyList();
+        private List<Focus.Slot> schedules = Collections.emptyList();
 
         void watch(Focus f, List<String> targets, long now, long awake, ZoneId local, long nextFocus) {
             clear();
             if (targets.isEmpty() || f.active != null) return;
-            List<Quota> rules = f.limits.forTargets(targets);
-            if (rules.isEmpty() || remaining(rules, Window.at(now, local)) == 0) return;
-            observed = rules; wall = now; uptime = awake; zone = local; stopAt = nextFocus;
+            observed = f.limits.forTargets(targets);
+            schedules = f.meteredSlots(now,now+MAX_SAMPLE,local);
+            if (remaining(at(observed,schedules,now),Window.at(now,local))==0) { clear(); return; }
+            wall = now; uptime = awake; zone = local; stopAt = nextFocus;
         }
-        void clear() { observed = Collections.emptyList(); }
+        void clear() { observed = Collections.emptyList(); schedules=Collections.emptyList(); }
         boolean finish(long now, long awake, ZoneId local) {
-            List<Quota> rules = observed;
+            List<Quota> base = observed;
+            List<Focus.Slot> slots = schedules;
             clear();
-            if (rules.isEmpty() || !local.equals(zone)) return false;
+            if ((base.isEmpty() && slots.isEmpty()) || !local.equals(zone)) return false;
             long elapsed = awake - uptime, wallDelta = now - wall;
             // A delayed or discontinuous sample cannot establish what stayed visible.
-            if (elapsed <= 0 || wallDelta < 0 || elapsed > 4 * CHECKPOINT || Math.abs(wallDelta - elapsed) > 1000)
+            if (elapsed <= 0 || wallDelta < 0 || elapsed > MAX_SAMPLE || Math.abs(wallDelta - elapsed) > 1000)
                 return false;
-            return consume(rules, wall, Math.min(wall + elapsed, stopAt), local);
+            long until=Math.min(wall+elapsed,stopAt);
+            boolean changed=false;
+            for (long from=wall; from<until;) {
+                long end=until;
+                for (Focus.Slot s:slots) {
+                    if (s.start>from) end=Math.min(end,s.start);
+                    if (s.end>from) end=Math.min(end,s.end);
+                }
+                changed|=consume(at(base,slots,from),from,end,local);
+                from=end;
+            }
+            return changed;
         }
     }
 }

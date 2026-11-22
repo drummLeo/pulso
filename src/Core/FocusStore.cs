@@ -19,7 +19,8 @@ public sealed class FocusStore(string folder)
                 using var file = new FileStream(candidate, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
                 var data = JsonSerializer.Deserialize<FocusData>(file);
                 if (data == null || data.Apps == null || data.Sites == null || data.Routines == null || data.History == null
-                    || data.Routines.Any(r => r == null || r.StartMinute is < 0 or >= 1440 || r.Minutes is < 1 or > 720 || r.Days is < 1 or > 127)
+                    || data.Routines.Any(r => r == null || r.StartMinute is < 0 or >= 1440 || r.Minutes is < 1 or > 720
+                        || r.Days is < 1 or > 127 || r.HourMinutes is < 1 or > 60)
                     || data.Routines.Select(r => r.Id).Distinct().Count() != data.Routines.Length
                     || data.History.Any(e => e == null || e.End < e.Start)
                     || data.Active is { } active && active.End <= active.Start) continue;

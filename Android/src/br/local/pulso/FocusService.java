@@ -24,7 +24,6 @@ import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
-import android.widget.Toast;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -51,29 +50,38 @@ public final class FocusService extends AccessibilityService {
     };
     private final Limits.Tracker tracker = new Limits.Tracker();
     private List<String> lastTargets = Collections.emptyList();
-    private boolean registered, pending, watchingBar, dirty;
+    private boolean registered, pending, watchingBar, dirty, enforcing;
     private long eventAt, lastCheckpoint;
     private Model model;
-    private Set<String> essential;
+    private Set<String> essential, launchers;
     private WindowManager manager;
     private PowerManager power;
     private KeyguardManager keyguard;
     private ScrollView cover;
+    private ScrollView notice;
+    private String noticeName, noticeTarget;
+    private Limits.Block noticeBlock;
+    private boolean noticeSite;
     private boolean coverDark;
     private final SharedPreferences.OnSharedPreferenceChangeListener appearanceChanged = (prefs,key)->{
+        if (notice!=null) drawNotice();
         if (cover != null) queueCheck();
     };
     private final Rect covered = new Rect();
-    private String showingHost = "", showingReason = "", lastApp = "";
-    private long showingEnd, lastHome, lastToast;
+    private String showingHost = "", showingReason = "", ejected = "";
+    private long showingEnd;
 
     @Override protected void onServiceConnected() {
         super.onServiceConnected();
-        model = Model.get(this); essential = Apps.essential(this);
+        model = Model.get(this); essential = Apps.essential(this); launchers=Apps.launchers(this);
         manager = (WindowManager)getSystemService(WINDOW_SERVICE);
         power = (PowerManager)getSystemService(POWER_SERVICE);
         keyguard = (KeyguardManager)getSystemService(KEYGUARD_SERVICE);
         model.listen(changed);
+        model.beforeEdit=()->{
+            if (unlocked()) settle(System.currentTimeMillis(),SystemClock.uptimeMillis(),ZoneId.systemDefault());
+            else tracker.clear();
+        };
         Appearance.preferences(this).registerOnSharedPreferenceChangeListener(appearanceChanged);
         if (!registered) {
             IntentFilter filter = new IntentFilter();
@@ -93,9 +101,11 @@ public final class FocusService extends AccessibilityService {
     }
     @Override public void onAccessibilityEvent(AccessibilityEvent event) {
         if (!connected || event == null) return;
-        if (model.state.active == null && model.state.limits.configured.isEmpty()) return;
+        if (!enforcing && notice==null) return;
+        String pkg=String.valueOf(event.getPackageName());
+        if (event.getEventType()==AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && launchers.contains(pkg)) ejected="";
         if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-                && !browser(String.valueOf(event.getPackageName()))) return;
+                && !browser(pkg)) return;
         if (eventAt == 0) eventAt = event.getEventTime();
         queueCheck();
     }
@@ -119,17 +129,17 @@ public final class FocusService extends AccessibilityService {
         ZoneId zone = ZoneId.systemDefault();
         model.tick(now);
         Focus f = model.state;
-        long next = Long.MAX_VALUE;
-        if (f.active != null) next = f.active.end;
-        else if (!f.routines.isEmpty()) {
-            Focus.Slot slot = f.next(now,zone);
-            if (slot != null) next = slot.start;
-        }
+        Focus.Slot upcoming=f.next(now,zone);
+        long next=upcoming==null?Long.MAX_VALUE:upcoming.start;
+        if (f.active!=null) next=Math.min(next,f.active.end);
+        List<Focus.Slot> schedules=f.meteredSlots(now,now+1,zone);
+        for (Focus.Slot s:schedules) next=Math.min(next,s.end);
         boolean interactive = unlocked();
-        boolean observing = interactive && (!f.apps.isEmpty() || !f.sites.isEmpty())
-            && (f.active != null || !f.limits.configured.isEmpty());
-        Visible visible = observing ? foreground(f) : null;
-        List<String> targets = visible == null ? Collections.emptyList() : f.targets(visible.pkg,visible.host());
+        enforcing=(!f.apps.isEmpty() || !f.sites.isEmpty())
+            && (f.active!=null || !f.limits.configured.isEmpty() || !schedules.isEmpty());
+        boolean observing=interactive && enforcing;
+        Visible visible=observing ? foreground(f,!schedules.isEmpty()) : null;
+        List<String> targets=visible==null || essential.contains(visible.pkg) ? Collections.emptyList() : f.targets(visible.pkg,visible.host());
         if (interactive) {
             // Window events carry the monotonic time of the switch, even when Android batches them.
             long lag = !targets.equals(lastTargets) && transitionAt > 0 ? Math.max(0, awake - transitionAt) : 0;
@@ -138,31 +148,43 @@ public final class FocusService extends AccessibilityService {
         lastTargets = targets;
         watchBar(visible != null && visible.readBar);
         boolean tracking = false;
+        Limits.Window w=Limits.Window.at(now,zone);
+        if (notice!=null) {
+            List<String> shown=f.targets(noticeSite?null:noticeTarget,noticeSite?noticeTarget:null);
+            Limits.Block current=observing?f.restriction(shown,w):null;
+            if (current==null) hideNotice();
+            else if (current.end!=noticeBlock.end || !current.reason.equals(noticeBlock.reason)) {
+                noticeBlock=current; drawNotice();
+            }
+        }
         if (visible == null || targets.isEmpty()) {
             hideCover();
+            if (!observing || visible!=null) ejected="";
+            if (visible!=null && !launchers.contains(visible.pkg)) hideNotice();
             if (observing && visible == null) next = Math.min(next,now + 1000);
         } else {
-            Limits.Window w = Limits.Window.at(now,zone);
             List<String> app = f.apps.contains(visible.pkg) ? Collections.singletonList(Limits.app(visible.pkg)) : Collections.emptyList();
             Limits.Block appBlock = f.restriction(app,w);
             Limits.Block block = f.restriction(targets,w);
             if (appBlock != null) {
                 hideCover();
-                returnHome(awake,visible.pkg,appBlock,false);
+                returnHome(visible.pkg,appBlock,false);
                 next = Math.min(next,Math.min(now + 1000,appBlock.end));
             } else if (block != null && visible.address != null) {
-                if (visible.area.width() > 0 && visible.area.height() >= Ui.dp(this,60))
+                if (visible.area.width() > 0 && visible.area.height() >= Ui.dp(this,60)) {
+                    ejected=""; hideNotice();
                     showCover(visible.area,visible.host(),block);
-                else {
+                } else {
                     hideCover();
-                    returnHome(awake,visible.host(),block,true);
+                    returnHome(visible.host(),block,true);
                 }
                 next = Math.min(next,block.end);
             } else {
-                hideCover();
-                List<Limits.Quota> rules = f.limits.forTargets(targets);
+                hideCover(); hideNotice(); ejected="";
+                List<Limits.Quota> rules=Limits.at(f.limits.forTargets(targets),schedules,now);
                 if (!rules.isEmpty() && f.active == null) {
-                    tracker.watch(f,targets,now,awake,zone,next);
+                    Focus.Slot immediate=f.next(now,zone,true);
+                    tracker.watch(f,targets,now,awake,zone,immediate==null?Long.MAX_VALUE:immediate.start);
                     tracking = true;
                     long delay = Math.min(Limits.Tracker.CHECKPOINT,Limits.remaining(rules,w));
                     next = Math.min(next,Math.min(now + delay,Math.min(w.hourEnd,w.dayEnd)));
@@ -171,6 +193,7 @@ public final class FocusService extends AccessibilityService {
         }
         // Some browser transitions do not publish a new window event.
         if (visible != null && visible.readBar) next = Math.min(next,now + 2000);
+        if (notice!=null) next=Math.min(next,noticeBlock.end);
         checkpoint(awake,!tracking);
         if (next != Long.MAX_VALUE) handler.postDelayed(inspect,Math.max(20,next-System.currentTimeMillis()));
     }
@@ -185,14 +208,48 @@ public final class FocusService extends AccessibilityService {
             model.saveUsage(); dirty = false; lastCheckpoint = awake;
         }
     }
-    private void returnHome(long awake,String target,Limits.Block block,boolean site) {
-        if (target.equals(lastApp) && awake-lastHome < 650) return;
-        lastHome=awake; lastApp=target;
-        if (performGlobalAction(GLOBAL_ACTION_HOME) && awake-lastToast > 1800) {
-            lastToast=awake;
-            String name=site ? target : Apps.label(this,target);
-            Toast.makeText(this,name+" · "+block.reason+". Até "+releaseTime(block.end)+".",Toast.LENGTH_LONG).show();
+    private void returnHome(String target,Limits.Block block,boolean site) {
+        if (target.equals(ejected)) return;
+        if (performGlobalAction(GLOBAL_ACTION_HOME)) {
+            ejected=target;
+            if (notice!=null && target.equals(noticeTarget) && site==noticeSite
+                    && block.end==noticeBlock.end && block.reason.equals(noticeBlock.reason)) return;
+            noticeTarget=target;
+            noticeName=site?target:Apps.label(this,target);
+            noticeBlock=block; noticeSite=site;
+            drawNotice();
         }
+    }
+    private void drawNotice() {
+        removeNoticeView();
+        ContextThemeWrapper themed=new ContextThemeWrapper(this,R.style.PulsoTheme);
+        Appearance.read(this).applyToContext(themed);
+        String title=noticeSite?"Site em pausa":"Aplicativo em pausa";
+        ScrollView sheet=new ScrollView(themed);
+        sheet.setBackground(Ui.bg(themed,card_surface,16,true));
+        sheet.setAccessibilityPaneTitle(title);
+        LinearLayout content=Ui.col(themed); Ui.pad(content,18,14,18,12); sheet.addView(content);
+        TextView heading=Ui.text(themed,title,21,text_primary,true); heading.setAccessibilityHeading(true);
+        Ui.put(content,heading,0);
+        Ui.put(content,Ui.text(themed,noticeName,18,text_primary,true),5);
+        String detail=noticeBlock.reason+". Liberação às "+releaseTime(noticeBlock.end)+".";
+        Ui.put(content,Ui.text(themed,detail,16,text_muted,false),6);
+        Ui.put(content,Ui.button(themed,"Entendi",on_focus_action,focus_action,()->{hideNotice(); ejected=""; queueCheck();}),10);
+        int width=Math.min(Ui.dp(this,408),getResources().getDisplayMetrics().widthPixels-Ui.dp(this,24));
+        WindowManager.LayoutParams p=new WindowManager.LayoutParams(width,Ui.WRAP,WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,PixelFormat.TRANSLUCENT);
+        p.gravity=Gravity.TOP|Gravity.CENTER_HORIZONTAL; p.y=Ui.dp(this,8); p.setTitle("Pulso · "+title);
+        try {
+            manager.addView(sheet,p); notice=sheet;
+        } catch (WindowManager.BadTokenException | WindowManager.InvalidDisplayException | SecurityException unavailable) { hideNotice(); }
+    }
+    private void removeNoticeView() {
+        if (notice==null) return;
+        try { manager.removeViewImmediate(notice); } catch (IllegalArgumentException detached) { }
+        notice=null;
+    }
+    private void hideNotice() {
+        removeNoticeView(); noticeBlock=null; noticeName=null; noticeTarget=null;
     }
     private static String releaseTime(long end) {
         return Instant.ofEpochMilli(end).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm"));
@@ -207,13 +264,13 @@ public final class FocusService extends AccessibilityService {
         }
         String host() { return address == null ? null : address.host; }
     }
-    private Visible foreground(Focus f) {
+    private Visible foreground(Focus f,boolean meteredSchedule) {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return null;
         try {
             String pkg = String.valueOf(root.getPackageName());
-            if (essential.contains(pkg)) return new Visible("",false,null,null);
-            boolean readBar = browser(pkg) && f.monitorsSites();
+            if (essential.contains(pkg)) return new Visible(pkg,false,null,null);
+            boolean readBar = browser(pkg) && f.monitorsSites(meteredSchedule);
             Address address = readBar ? address(root,pkg) : null;
             Rect area = null;
             if (address != null) {
@@ -293,18 +350,19 @@ public final class FocusService extends AccessibilityService {
             if (connected && unlocked()) settle(System.currentTimeMillis(),awake,ZoneId.systemDefault());
             tracker.clear(); checkpoint(awake,true);
         }
-        connected=false; pending=false; watchingBar=false;
+        connected=false; pending=false; watchingBar=false; enforcing=false; ejected="";
         eventAt=0; lastTargets=Collections.emptyList();
-        handler.removeCallbacksAndMessages(null); hideCover();
-        if(model!=null)model.unlisten(changed);
+        handler.removeCallbacksAndMessages(null); hideCover(); hideNotice();
+        if(model!=null){model.beforeEdit=null;model.unlisten(changed);}
         Appearance.preferences(this).unregisterOnSharedPreferenceChangeListener(appearanceChanged);
         if(registered){ unregisterReceiver(clockChanges); registered=false; }
     }
     @Override public void onConfigurationChanged(Configuration configuration) {
         super.onConfigurationChanged(configuration);
+        if (notice!=null) drawNotice();
         if (cover != null) queueCheck();
     }
-    @Override public void onInterrupt() { tracker.clear(); hideCover(); queueCheck(); }
+    @Override public void onInterrupt() { tracker.clear(); hideCover(); hideNotice(); queueCheck(); }
     @Override public boolean onUnbind(Intent intent) { disconnect(); return super.onUnbind(intent); }
     @Override public void onDestroy() { disconnect(); super.onDestroy(); }
 }

@@ -18,14 +18,20 @@ import java.util.Map;
 import java.util.Set;
 
 final class Apps {
+    static Set<String> launchers(Context context) {
+        Set<String> result=new HashSet<>();
+        Intent home=new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME);
+        for (ResolveInfo r:context.getPackageManager().queryIntentActivities(home,0)) result.add(r.activityInfo.packageName);
+        return result;
+    }
     static Set<String> essential(Context context) {
         Set<String> result = new HashSet<>(Arrays.asList(context.getPackageName(), "android", "com.android.systemui",
             "com.android.settings", "com.android.phone", "com.android.server.telecom", "com.android.emergency",
             "com.samsung.android.incallui", "com.samsung.android.dialer", "com.google.android.dialer",
             "com.android.permissioncontroller", "com.google.android.permissioncontroller"));
         PackageManager pm = context.getPackageManager();
-        for (Intent intent : new Intent[]{new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME),
-                new Intent(Settings.ACTION_SETTINGS), new Intent(Intent.ACTION_DIAL, Uri.parse("tel:"))}) {
+        result.addAll(launchers(context));
+        for (Intent intent : new Intent[]{new Intent(Settings.ACTION_SETTINGS), new Intent(Intent.ACTION_DIAL, Uri.parse("tel:"))}) {
             for (ResolveInfo r : pm.queryIntentActivities(intent, 0)) result.add(r.activityInfo.packageName);
         }
         TelecomManager telecom = (TelecomManager) context.getSystemService(Context.TELECOM_SERVICE);
