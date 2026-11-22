@@ -62,6 +62,7 @@ python .\Android\tests\test_tema.py
 
 **Windows** 1.3.0 · **Android** 1.3 · **Extensão para Chrome e Edge** 1.2.0
 
+- 22/11/2026 — Adiciona saldo por agendamento e aviso de aplicativo em pausa no Pulso 1.3 · [a4b227b](https://github.com/drummLeo/pulso/commit/a4b227bd21d1ace0ab6e671c8b4aec5094cfb729)
 - 22/11/2026 — Adiciona o modo escuro ao Pulso 1.2 e documenta o projeto · [95c485b](https://github.com/drummLeo/pulso/commit/95c485b3a8cad1c6982b9c86cbb64c5b6e4f0129)
 - 22/11/2026 — Adiciona o Pulso 1.1 para Windows e Android · [96455f8](https://github.com/drummLeo/pulso/commit/96455f80642d58113dcaa4f49ea93c47cd81453f)
 
