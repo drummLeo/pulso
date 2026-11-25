@@ -1,0 +1,36 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <SolidColorBrush x:Key="Canvas" Color="#F5F6FA"/>
+  <SolidColorBrush x:Key="Surface" Color="#FFFFFF"/>
+  <SolidColorBrush x:Key="Ink" Color="#242A45"/>
+  <SolidColorBrush x:Key="Muted" Color="#555E77"/>
+  <SolidColorBrush x:Key="Line" Color="#DCE0ED"/>
+  <SolidColorBrush x:Key="Accent" Color="#424EAB"/>
+  <SolidColorBrush x:Key="AccentFill" Color="#424EAB"/>
+  <SolidColorBrush x:Key="OnAccent" Color="#FFFFFF"/>
+  <SolidColorBrush x:Key="Lilac" Color="#E8EAFA"/>
+  <SolidColorBrush x:Key="Mint" Color="#D9F2C6"/>
+  <SolidColorBrush x:Key="OnMint" Color="#25344A"/>
+  <SolidColorBrush x:Key="Rail" Color="#232E4D"/>
+  <SolidColorBrush x:Key="RailText" Color="#DBDFF1"/>
+  <SolidColorBrush x:Key="RailLine" Color="#49536E"/>
+  <SolidColorBrush x:Key="RailSelected" Color="#415175"/>
+  <SolidColorBrush x:Key="RailSelectedText" Color="#FFFFFF"/>
+  <SolidColorBrush x:Key="HeroText" Color="#F7F7FF"/>
+  <SolidColorBrush x:Key="HeroMuted" Color="#D9DEF1"/>
+  <SolidColorBrush x:Key="HeroChipFill" Color="#394763"/>
+  <SolidColorBrush x:Key="HeroChipText" Color="#F0F1FB"/>
+  <SolidColorBrush x:Key="SelectedChipFill" Color="#DFE4FC"/>
+  <SolidColorBrush x:Key="SelectedChipText" Color="#293458"/>
+  <SolidColorBrush x:Key="DialTrack" Color="#7384A6"/>
+  <SolidColorBrush x:Key="StatusIdle" Color="#65728C"/>
+  <SolidColorBrush x:Key="StatusActive" Color="#3D7958"/>
+  <SolidColorBrush x:Key="ErrorSurface" Color="#FBE8E9"/>
+  <SolidColorBrush x:Key="ErrorInk" Color="#903146"/>
+  <SolidColorBrush x:Key="HoverTint" Color="#130C1334"/>
+  <SolidColorBrush x:Key="PressedTint" Color="#260C1334"/>
+  <SolidColorBrush x:Key="ButtonBorder" Color="Transparent"/>
+  <LinearGradientBrush x:Key="HeroBackground" StartPoint="0%,100%" EndPoint="100%,0%">
+    <GradientStop Color="#26324F" Offset="0"/>
+    <GradientStop Color="#344567" Offset="1"/>
+  </LinearGradientBrush>
+</ResourceDictionary>

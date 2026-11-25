@@ -160,7 +160,8 @@ static int RunChecks()
     finally
     {
         var temp = new DirectoryInfo(folder);
-        if (string.Equals(temp.Parent?.FullName.TrimEnd('\\'), Path.GetTempPath().TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)
+        if (string.Equals(temp.Parent?.FullName.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                Path.GetTempPath().TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar), StringComparison.OrdinalIgnoreCase)
             && temp.Name.StartsWith("pulso-core-", StringComparison.Ordinal)) temp.Delete(true);
     }
     Console.WriteLine($"{passed} verificações concluídas.");
