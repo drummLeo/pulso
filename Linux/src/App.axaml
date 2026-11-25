@@ -1,0 +1,141 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="Pulso.DesktopApp"
+             RequestedThemeVariant="Default">
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.ThemeDictionaries>
+        <ResourceInclude x:Key="Light" Source="/src/Themes/Light.axaml"/>
+        <ResourceInclude x:Key="Dark" Source="/src/Themes/Dark.axaml"/>
+        <ResourceInclude x:Key="Default" Source="/src/Themes/Light.axaml"/>
+      </ResourceDictionary.ThemeDictionaries>
+      <FontFamily x:Key="BodyFont">fonts:Inter#Inter, Sans-serif</FontFamily>
+      <FontFamily x:Key="DisplayFont">fonts:Inter#Inter, Sans-serif</FontFamily>
+    </ResourceDictionary>
+  </Application.Resources>
+
+  <Application.Styles>
+    <FluentTheme />
+
+    <Style Selector="Window">
+      <Setter Property="FontFamily" Value="{StaticResource BodyFont}"/>
+      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="Foreground" Value="{DynamicResource Ink}"/>
+      <Setter Property="Background" Value="{DynamicResource Canvas}"/>
+    </Style>
+
+    <Style Selector="TextBlock">
+      <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+
+    <Style Selector="TextBlock.Heading">
+      <Setter Property="FontFamily" Value="{StaticResource DisplayFont}"/>
+      <Setter Property="FontSize" Value="21"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+
+    <Style Selector="TextBlock.Hint">
+      <Setter Property="Foreground" Value="{DynamicResource Muted}"/>
+      <Setter Property="FontSize" Value="14"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+
+    <Style Selector="Border.Card">
+      <Setter Property="Background" Value="{DynamicResource Surface}"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource Line}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="13"/>
+      <Setter Property="Padding" Value="20"/>
+    </Style>
+
+    <Style Selector="Button">
+      <Setter Property="Background" Value="{DynamicResource Lilac}"/>
+      <Setter Property="Foreground" Value="{DynamicResource Accent}"/>
+      <Setter Property="Padding" Value="13,7"/>
+      <Setter Property="MinHeight" Value="34"/>
+      <Setter Property="FontSize" Value="13"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="HorizontalContentAlignment" Value="Center"/>
+      <Setter Property="VerticalContentAlignment" Value="Center"/>
+      <Setter Property="BorderBrush" Value="{DynamicResource ButtonBorder}"/>
+      <Setter Property="BorderThickness" Value="2"/>
+      <Setter Property="CornerRadius" Value="7"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Panel x:Name="Face">
+            <Border CornerRadius="{TemplateBinding CornerRadius}"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"/>
+            <Border x:Name="Tint"
+                    CornerRadius="{TemplateBinding CornerRadius}"
+                    BorderBrush="{TemplateBinding Foreground}"
+                    BorderThickness="0"
+                    IsHitTestVisible="False"/>
+            <Border Padding="{TemplateBinding BorderThickness}">
+              <ContentPresenter x:Name="PART_ContentPresenter"
+                                Margin="{TemplateBinding Padding}"
+                                Content="{TemplateBinding Content}"
+                                ContentTemplate="{TemplateBinding ContentTemplate}"
+                                HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                RecognizesAccessKey="True"/>
+            </Border>
+          </Panel>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+
+    <Style Selector="Button:pointerover /template/ Border#Tint">
+      <Setter Property="Background" Value="{DynamicResource HoverTint}"/>
+      <Setter Property="BorderThickness" Value="1"/>
+    </Style>
+
+    <Style Selector="Button:pressed /template/ Border#Tint">
+      <Setter Property="Background" Value="{DynamicResource PressedTint}"/>
+      <Setter Property="BorderThickness" Value="2"/>
+    </Style>
+
+    <Style Selector="Button:disabled /template/ Panel#Face">
+      <Setter Property="Opacity" Value="0.55"/>
+    </Style>
+
+    <Style Selector="Button.Primary">
+      <Setter Property="Background" Value="{DynamicResource AccentFill}"/>
+      <Setter Property="Foreground" Value="{DynamicResource OnAccent}"/>
+    </Style>
+
+    <Style Selector="Button.Quiet">
+      <Setter Property="Background" Value="Transparent"/>
+      <Setter Property="Padding" Value="8,4"/>
+    </Style>
+
+    <Style Selector="Button.RailButton">
+      <Setter Property="Background" Value="{DynamicResource Rail}"/>
+      <Setter Property="Foreground" Value="{DynamicResource RailText}"/>
+      <Setter Property="HorizontalAlignment" Value="Stretch"/>
+      <Setter Property="HorizontalContentAlignment" Value="Left"/>
+      <Setter Property="Padding" Value="8"/>
+      <Setter Property="Margin" Value="0,2"/>
+    </Style>
+
+    <Style Selector="Button.RailButton.selected">
+      <Setter Property="Background" Value="{DynamicResource RailSelected}"/>
+      <Setter Property="Foreground" Value="{DynamicResource RailSelectedText}"/>
+    </Style>
+
+    <Style Selector="Button.HeroChip">
+      <Setter Property="Background" Value="{DynamicResource HeroChipFill}"/>
+      <Setter Property="Foreground" Value="{DynamicResource HeroChipText}"/>
+      <Setter Property="Padding" Value="9,4"/>
+      <Setter Property="Margin" Value="0,0,5,5"/>
+    </Style>
+
+    <Style Selector="Button.HeroChip.selected">
+      <Setter Property="Background" Value="{DynamicResource SelectedChipFill}"/>
+      <Setter Property="Foreground" Value="{DynamicResource SelectedChipText}"/>
+    </Style>
+  </Application.Styles>
+</Application>

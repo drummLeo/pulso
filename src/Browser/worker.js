@@ -1,4 +1,4 @@
-importScripts("conexao.js");
+if (typeof importScripts === "function") importScripts("conexao.js");
 
 const pausePage = chrome.runtime.getURL("pausa.html");
 const filters = [
@@ -225,7 +225,7 @@ function connect() {
   const port = typeof PULSO_PORT === "number" ? PULSO_PORT : 38473;
   const current = new WebSocket("ws://127.0.0.1:" + port + "/foco", PULSO_PROTOCOL);
   socket = current;
-  current.onopen = () => current.send(/Edg\//.test(navigator.userAgent) ? "Edge/1.5" : "Chrome/1.5");
+  current.onopen = () => current.send(/Edg\//.test(navigator.userAgent) ? "Edge/1.5" : /Firefox\//.test(navigator.userAgent) ? "Firefox/1.5" : "Chrome/1.5");
   current.onmessage = event => {
     ordered(async () => {
       if (socket === current && current.readyState === WebSocket.OPEN) await acceptPolicy(JSON.parse(event.data));
@@ -257,7 +257,11 @@ chrome.alarms.onAlarm.addListener(alarm => {
   connect();
 });
 chrome.windows.onFocusChanged.addListener(changedTab);
-chrome.windows.onBoundsChanged.addListener(changedTab);
+chrome.windows.onBoundsChanged?.addListener(changedTab);
+chrome.permissions?.onAdded?.addListener(() => ordered(async () => {
+  await Promise.all((await chrome.tabs.query({})).map(pauseTab));
+  await reportForeground(true);
+}));
 chrome.tabs.onActivated.addListener(changedTab);
 chrome.tabs.onUpdated.addListener((id, change, tab) => {
   if (change.url && pauseFor(pageHost(change.url)).until) ordered(() => pauseTab(tab));

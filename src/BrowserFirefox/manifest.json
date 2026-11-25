@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Pulso • Foco no PC",
+  "version": "1.5.0",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "pulso@pulso.local",
+      "strict_min_version": "128.0"
+    }
+  },
+  "description": "Pausa sites durante o foco, aplica limites de uso e filtra sites de pornografia e apostas neste PC.",
+  "icons": { "128": "pulso.png" },
+  "permissions": ["declarativeNetRequest", "tabs", "alarms", "storage"],
+  "host_permissions": ["http://*/*", "https://*/*"],
+  "background": { "scripts": ["conexao.js", "worker.js"] },
+  "action": { "default_title": "Pulso • Foco no PC", "default_popup": "status.html" },
+  "web_accessible_resources": [{ "resources": ["pausa.html"], "matches": ["http://*/*", "https://*/*"] }],
+  "content_security_policy": { "extension_pages": "script-src 'self'; object-src 'none'; connect-src 'self' ws://127.0.0.1:38473" }
+}

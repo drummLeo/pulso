@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Pulso</AssemblyName>
+    <Version>1.5.0</Version>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <Product>Pulso</Product>
+    <Description>Sessões de foco e bloqueio de distrações no Linux</Description>
+    <DebugType>embedded</DebugType>
+    <NuGetAudit>false</NuGetAudit>
+    <NoWarn>AVLN3001</NoWarn>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Avalonia" Version="11.3.23" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.23" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.23" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.23" />
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.21.3" />
+    <InternalsVisibleTo Include="Pulso.Linux.Verificacao" />
+    <Compile Include="../src/GlobalUsings.cs" Link="GlobalUsings.cs" />
+    <Compile Include="../src/Core/*.cs" Link="Core/%(Filename)%(Extension)" />
+    <Compile Include="../src/BrowserLink.cs" Link="BrowserLink.cs" />
+    <Compile Include="../src/AppCategories.cs" Link="AppCategories.cs" />
+    <EmbeddedResource Include="../src/Browser/*" LogicalName="Pulso.Extension.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="../src/BrowserFirefox/manifest.json" LogicalName="Pulso.FirefoxExtension.manifest.json" />
+    <EmbeddedResource Include="../shared/site_porn.txt;../shared/site_gambling.txt" LogicalName="Pulso.Extension.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="../shared/app_categories.tsv" LogicalName="Pulso.AppCategories.tsv" />
+    <AvaloniaResource Include="../src/Browser/pulso.png" Link="Assets/pulso.png" />
+  </ItemGroup>
+</Project>

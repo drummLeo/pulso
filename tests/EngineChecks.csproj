@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="Windows/**/*.cs" />
+    <Compile Remove="Linux/**" />
     <Compile Include="../src/Core/*.cs" />
   </ItemGroup>
 </Project>

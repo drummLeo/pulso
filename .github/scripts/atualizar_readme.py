@@ -19,10 +19,11 @@ END = "<!-- pulso:resumo:fim -->"
 
 def resumo():
     pc = ET.parse(ROOT / "src/Pulso.csproj").findtext("PropertyGroup/Version")
+    linux = ET.parse(ROOT / "Linux/Pulso.Linux.csproj").findtext("PropertyGroup/Version")
     manifest = ET.parse(ROOT / "Android/AndroidManifest.xml").getroot()
     android = manifest.get("{http://schemas.android.com/apk/res/android}versionName")
     extension = json.loads((ROOT / "src/Browser/manifest.json").read_text(encoding="utf-8"))["version"]
-    if not all((pc, android, extension)):
+    if not all((pc, linux, android, extension)):
         raise ValueError("Falta uma versão nos manifestos de distribuição.")
 
     repo = os.environ.get("GITHUB_REPOSITORY", "drummLeo/pulso")
@@ -32,7 +33,7 @@ def resumo():
         ["git", "-c", "i18n.logOutputEncoding=UTF-8", "log", "-5", "--format=%H%x09%cs%x09%s",
          "--", ".", ":(exclude)README.md"], cwd=ROOT, encoding="utf-8",
     )
-    lines = [f"**Windows** {pc} · **Android** {android} · **Extensão para Chrome e Edge** {extension}", ""]
+    lines = [f"**Windows** {pc} · **Linux** {linux} · **Android** {android} · **Extensão para Chrome e Edge** {extension}", ""]
     for entry in history.strip("\n").split("\n"):
         if not entry:
             continue

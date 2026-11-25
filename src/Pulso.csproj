@@ -23,6 +23,7 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <InternalsVisibleTo Include="Pulso.Verificacao" />
     <EmbeddedResource Include="Browser/*" LogicalName="Pulso.Extension.%(Filename)%(Extension)" />
+    <EmbeddedResource Include="BrowserFirefox/manifest.json" LogicalName="Pulso.FirefoxExtension.manifest.json" />
     <EmbeddedResource Include="../shared/site_porn.txt;../shared/site_gambling.txt" LogicalName="Pulso.Extension.%(Filename)%(Extension)" />
     <EmbeddedResource Include="../shared/app_categories.tsv" LogicalName="Pulso.AppCategories.tsv" />
     <Resource Include="pulso.ico" />

@@ -1,11 +1,13 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.IO.Compression;
 using System.Net;
 using System.Net.WebSockets;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -18,6 +20,10 @@ public sealed class BrowserLink
     public const int Port = 38473;
     public const string Origin = "chrome-extension://ebadenennfkkhaocjohijlpknihkjmbd";
     private const string Assets = "Pulso.Extension.";
+    private const string FirefoxAssets = "Pulso.FirefoxExtension.";
+    private static readonly Regex FirefoxOriginPattern = new(
+        "^moz-extension://[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+        RegexOptions.CultureInvariant);
     private readonly string folder;
     private readonly int port;
     private readonly string protocol;
@@ -30,17 +36,37 @@ public sealed class BrowserLink
     private WebApplication? server;
     public string? Error { get; private set; }
     public string? ExtensionWarning { get; private set; }
-    public string Connected => string.Join(" e ", clients.Values.Select(c => c.Browser).Distinct().Order());
+    public string Connected
+    {
+        get
+        {
+            var list = clients.Values.Select(c => c.Browser).Distinct().Order().ToArray();
+            return list.Length switch
+            {
+                0 => "",
+                1 => list[0],
+                2 => list[0] + " e " + list[1],
+                _ => string.Join(", ", list[..^1]) + " e " + list[^1]
+            };
+        }
+    }
     public bool RequiresReload => clients.Values.Any(c => !c.MeasuresUsage);
     public bool RequiresFilterReload => clients.Values.Any(c => !c.SupportsFilters);
     public bool HasFilterClient => clients.Values.Any(c => c.SupportsFilters);
     public string ExtensionFolder => Path.Combine(folder, "Extensao");
+    public string FirefoxExtensionFolder => Path.Combine(folder, "ExtensaoFirefox");
+    public string FirefoxExtensionPackage => Path.Combine(FirefoxExtensionFolder, "pulso-firefox.xpi");
 
     public BrowserLink(string folder, int port = Port)
     {
         this.folder = folder;
         this.port = port;
         Directory.CreateDirectory(folder);
+        if (!OperatingSystem.IsWindows())
+        {
+            try { File.SetUnixFileMode(folder, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        }
         var path = Path.Combine(folder, "conexao.key");
         if (!File.Exists(path))
         {
@@ -48,6 +74,8 @@ public sealed class BrowserLink
             try
             {
                 File.WriteAllText(temporary, Convert.ToHexString(RandomNumberGenerator.GetBytes(24)));
+                if (!OperatingSystem.IsWindows())
+                    File.SetUnixFileMode(temporary, UnixFileMode.UserRead | UnixFileMode.UserWrite);
                 try { File.Move(temporary, path); }
                 catch (IOException) when (File.Exists(path)) { }
             }
@@ -60,23 +88,62 @@ public sealed class BrowserLink
 
     public string PrepareExtension()
     {
-        var assembly = typeof(BrowserLink).Assembly;
         Directory.CreateDirectory(ExtensionFolder);
-        foreach (var name in assembly.GetManifestResourceNames().Where(n => n.StartsWith(Assets, StringComparison.Ordinal)))
-        {
-            using var resource = assembly.GetManifestResourceStream(name)!;
-            var fileName = name[Assets.Length..];
-            using var buffer = new MemoryStream();
-            resource.CopyTo(buffer);
-            byte[] bytes = buffer.ToArray();
-            if (fileName == "manifest.json" && port != Port)
-                bytes = Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(bytes).Replace("127.0.0.1:" + Port, "127.0.0.1:" + port));
+        foreach (var (fileName, bytes) in CollectExtensionFiles(Assets + "manifest.json"))
             WriteIfChanged(Path.Combine(ExtensionFolder, fileName), bytes);
-        }
-        WriteIfChanged(Path.Combine(ExtensionFolder, "conexao.js"), Encoding.UTF8.GetBytes(
-            "const PULSO_PROTOCOL = " + JsonSerializer.Serialize(protocol) + ";\nconst PULSO_PORT = " + port + ";"));
         ExtensionWarning = null;
         return ExtensionFolder;
+    }
+
+    public string PrepareFirefoxExtension()
+    {
+        Directory.CreateDirectory(FirefoxExtensionFolder);
+        var files = CollectExtensionFiles(FirefoxAssets + "manifest.json");
+        foreach (var (fileName, bytes) in files)
+            WriteIfChanged(Path.Combine(FirefoxExtensionFolder, fileName), bytes);
+
+        using var archiveStream = new MemoryStream();
+        using (var zip = new ZipArchive(archiveStream, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var (fileName, bytes) in files.OrderBy(f => f.FileName, StringComparer.Ordinal))
+            {
+                var entry = zip.CreateEntry(fileName, CompressionLevel.Optimal);
+                entry.LastWriteTime = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+                using var dest = entry.Open();
+                dest.Write(bytes);
+            }
+        }
+        WriteIfChanged(FirefoxExtensionPackage, archiveStream.ToArray());
+        ExtensionWarning = null;
+        return FirefoxExtensionFolder;
+    }
+
+    private List<(string FileName, byte[] Bytes)> CollectExtensionFiles(string manifestResource)
+    {
+        var assembly = typeof(BrowserLink).Assembly;
+        var files = new List<(string FileName, byte[] Bytes)>();
+        foreach (var name in assembly.GetManifestResourceNames()
+            .Where(n => n.StartsWith(Assets, StringComparison.Ordinal) && n != Assets + "manifest.json")
+            .OrderBy(n => n, StringComparer.Ordinal))
+        {
+            files.Add((name[Assets.Length..], ReadResource(assembly, name)));
+        }
+        byte[] manifestBytes = ReadResource(assembly, manifestResource);
+        if (port != Port)
+            manifestBytes = Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(manifestBytes).Replace("127.0.0.1:" + Port, "127.0.0.1:" + port));
+        files.Add(("manifest.json", manifestBytes));
+        files.Add(("conexao.js", Encoding.UTF8.GetBytes(
+            "const PULSO_PROTOCOL = " + JsonSerializer.Serialize(protocol) + ";\nconst PULSO_PORT = " + port + ";")));
+        return files;
+    }
+
+    private static byte[] ReadResource(Assembly assembly, string name)
+    {
+        using var resource = assembly.GetManifestResourceStream(name)
+            ?? throw new InvalidOperationException("Recurso da extensão ausente: " + name);
+        using var buffer = new MemoryStream();
+        resource.CopyTo(buffer);
+        return buffer.ToArray();
     }
 
     private static void WriteIfChanged(string path, byte[] bytes)
@@ -125,7 +192,15 @@ public sealed class BrowserLink
 
     internal (string? App, string? Site) UsageTarget(string? processName)
     {
-        string? browser = processName?.ToLowerInvariant() switch { "chrome" => "Chrome", "msedge" => "Edge", _ => null };
+        string? browser = processName?.ToLowerInvariant() switch
+        {
+            "chrome" or "google-chrome" or "google-chrome-stable" or "google-chrome-beta" or "google-chrome-unstable"
+                or "chromium" or "chromium-browser" => "Chrome",
+            "msedge" or "microsoft-edge" or "microsoft-edge-stable" or "microsoft-edge-beta" or "microsoft-edge-dev" => "Edge",
+            "firefox" or "firefox-esr" or "firefox-bin" or "firefox_firefox"
+                or "librewolf" or "waterfox" or "zen" or "zen-browser" => "Firefox",
+            _ => null
+        };
         if (browser == null) return (processName, null);
         var current = policy;
         bool filtersActive = current.Filters.IsActiveAt(DateTimeOffset.UtcNow);
@@ -145,6 +220,14 @@ public sealed class BrowserLink
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
                 ExtensionWarning = "Abra Navegadores para atualizar a pasta da extensão.";
+            }
+        }
+        if (Directory.Exists(FirefoxExtensionFolder))
+        {
+            try { PrepareFirefoxExtension(); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                ExtensionWarning = "Abra Navegadores para atualizar a extensão do Firefox.";
             }
         }
         try
@@ -171,10 +254,13 @@ public sealed class BrowserLink
         }
     }
 
+    private static bool IsAllowedOrigin(string? origin) =>
+        origin == Origin || (origin != null && FirefoxOriginPattern.IsMatch(origin));
+
     private async Task Handle(HttpContext context)
     {
         if (context.Request.Path != "/foco" || context.Request.Host.Host != "127.0.0.1"
-            || context.Request.Headers.Origin != Origin || !context.WebSockets.IsWebSocketRequest
+            || !IsAllowedOrigin(context.Request.Headers.Origin) || !context.WebSockets.IsWebSocketRequest
             || !context.WebSockets.WebSocketRequestedProtocols.Contains(protocol))
         {
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
@@ -240,7 +326,7 @@ public sealed class BrowserLink
         try
         {
             var hello = await Read();
-            if (hello is not ("Edge" or "Chrome" or "Edge/1.5" or "Chrome/1.5")) return;
+            if (hello is not ("Edge" or "Chrome" or "Firefox" or "Edge/1.5" or "Chrome/1.5" or "Firefox/1.5")) return;
             bool supportsFilters = hello.EndsWith("/1.5", StringComparison.Ordinal);
             string browser = supportsFilters ? hello[..^4] : hello;
             Task sending = SendPolicies(), receiving = ReceiveReports(browser, supportsFilters);

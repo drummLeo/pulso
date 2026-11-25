@@ -24,7 +24,12 @@ public static class Targets
     {
         "Pulso", "explorer", "dwm", "winlogon", "csrss", "taskmgr", "sihost", "ShellExperienceHost",
         "StartMenuExperienceHost", "SearchHost", "ApplicationFrameHost", "SystemSettings", "TextInputHost",
-        "LockApp", "CredentialUIBroker", "consent", "WindowsTerminal", "conhost", "OpenConsole"
+        "LockApp", "CredentialUIBroker", "consent", "WindowsTerminal", "conhost", "OpenConsole",
+        "pulso-linux", "gnome-shell", "plasmashell", "kwin_x11", "kwin_wayland", "xorg", "xwayland", "mutter",
+        "xfwm4", "xfce4-panel", "xfdesktop", "cinnamon", "mate-panel", "marco", "sway", "hyprland", "waybar",
+        "i3", "openbox", "fluxbox", "systemd", "dbus-daemon", "ksmserver", "kded5", "kded6", "krunner",
+        "xdg-desktop-portal", "polkit-gnome-authentication-agent-1", "polkit-kde-authentication-agent-1",
+        "lxqt-panel", "budgie-wm", "budgie-panel", "pantheon-shell", "gala", "wingpanel", "cosmic-comp", "cosmic-panel"
     };
     public static string? App(string? name)
     {
@@ -32,6 +37,7 @@ public static class Targets
         if (string.IsNullOrEmpty(value)) return null;
         if (value.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) value = value[..^4];
         return value.Length is > 0 and <= 200 && value.IndexOfAny(Path.GetInvalidFileNameChars()) < 0
+            && !value.Any(c => char.IsControl(c) || c is '/' or '\\')
             && value is not ("." or "..") && !Reserved.Contains(value) ? value : null;
     }
 }
