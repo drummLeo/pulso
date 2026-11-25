@@ -6,3 +6,4 @@ premium-audit.json
 *.p12
 *.jks
 *.keystore
+*.aab

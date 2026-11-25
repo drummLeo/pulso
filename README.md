@@ -88,10 +88,11 @@ python .\tests\browser_check.py .\tests\Windows\bin\Release\net10.0-windows\Puls
 
 O teste usa páginas locais para conferir bloqueio, liberação e reconexão. Para usar o Chrome ou o Edge já instalado, acrescente `--chromium "caminho\do\navegador.exe" --via-protocolo`.
 
-**Android.** Use Python 3, um JDK completo e o Android SDK com uma plataforma e as Build Tools instaladas. O script aceita o JDK do Android Studio ou `JAVA_HOME` e gera `Android\Pulso-Galaxy.apk`. A chave de assinatura fica em `%LOCALAPPDATA%\PulsoAndroid\Assinatura`. Atualizar uma instalação preservando os dados exige a mesma assinatura.
+**Android.** Use Python 3, um JDK completo e o Android SDK com uma plataforma e as Build Tools instaladas. O script aceita o JDK do Android Studio ou `JAVA_HOME` e gera `Android\Pulso-Galaxy.apk`. A chave de assinatura fica em `%LOCALAPPDATA%\PulsoAndroid\Assinatura`. Atualizar uma instalação preservando os dados exige a mesma assinatura. Para gerar um Android App Bundle (`Android\Pulso-Galaxy.aab`) para envio ao Google Play, acrescente `--aab` (com `--keystore` e a senha na variável de ambiente `PULSO_ANDROID_SIGN` caso use uma chave de upload separada).
 
 ```powershell
 python .\Android\compilar.py
+python .\Android\compilar.py --aab
 python .\Android\tests\test_tema.py
 ```
 
